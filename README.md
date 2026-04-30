@@ -26,6 +26,14 @@ cp .env.example .env        # optional: edit OLLAMA_MODEL / OLLAMA_BASE_URL
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
+### If `localhost:8000` fails in the browser
+
+- **Use the portal on port 5173** – During development the React UI runs on Vite (`npm run dev`), not on 8000. Open `http://127.0.0.1:5173` so `/api` calls are proxied to this backend.
+- **`http://localhost:8000/` used to 404** – The API has no HTML homepage unless you run `npm run build` in `frontend`. You should now see a short landing page at `/`, or use `http://127.0.0.1:8000/docs` for Swagger.
+- **Connection refused with `localhost` but `127.0.0.1` works** – Some systems resolve `localhost` to IPv6 first; bind explicitly, for example:
+  `uvicorn app.main:app --reload --host ::1 --port 8000`
+  or open `http://127.0.0.1:8000/` instead of `localhost`.
+
 ## Frontend
 
 ```bash
