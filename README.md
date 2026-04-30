@@ -1,17 +1,17 @@
 # GIGI-AI
 
-**GIGI-AI** is a local-first **WebUI** for social content, powered by **Qwen 8B** (via [Ollama](https://ollama.com)): **formats** and **tones** from `data/presets.json`, plus optional **guardrail templates** from `data/templates.json`. Includes **Translate to pt-BR** for **English or Spanish** source text.
+**GIGI-AI** is a local-first **WebUI** for social content, powered by **Qwen 14B** (via [Ollama](https://ollama.com)): **formats** and **tones** from `data/presets.json`, plus optional **guardrail templates** from `data/templates.json`. Includes **Translate to pt-BR** for **English or Spanish** source text.
 
 ## Prerequisites
 
 1. **Ollama** installed and running (`ollama serve` is usually automatic after install).
-2. Pull a Qwen 8B-class model (name must match your env):
+2. Pull a Qwen 14B-class model (name must match your env):
 
    ```bash
-   ollama pull qwen2.5:8b
+   ollama pull qwen2.5:14b
    ```
 
-   Other tags (for example `qwen2.5:7b`) work if you set `OLLAMA_MODEL` accordingly.
+   Other tags (for example `qwen2.5:8b` or `qwen2.5:7b`) work if you set `OLLAMA_MODEL` accordingly.
 
 ## Backend
 
@@ -85,7 +85,7 @@ Build the frontend (`npm run build` in `frontend`), then run the API: if **`fron
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama HTTP API |
-| `OLLAMA_MODEL` | `qwen2.5:8b` | Model tag |
+| `OLLAMA_MODEL` | `qwen2.5:14b` | Model tag |
 | `PRESETS_PATH` | `../data/presets.json` | Path relative to `backend/` unless absolute |
 | `TEMPLATES_PATH` | `../data/templates.json` | Guardrail templates store |
 | `REQUEST_TIMEOUT_S` | `600` | Long generations on CPU |
