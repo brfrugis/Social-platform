@@ -26,15 +26,35 @@ cp .env.example .env        # optional: edit OLLAMA_MODEL / OLLAMA_BASE_URL
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-### If `localhost:8000` fails in the browser
+## Frontend (portal UI)
 
-- **Use the portal on port 5173** – During development the React UI runs on Vite (`npm run dev`), not on 8000. Open `http://127.0.0.1:5173` so `/api` calls are proxied to this backend.
-- **`http://localhost:8000/` used to 404** – The API has no HTML homepage unless you run `npm run build` in `frontend`. You should now see a short landing page at `/`, or use `http://127.0.0.1:8000/docs` for Swagger.
-- **Connection refused with `localhost` but `127.0.0.1` works** – Some systems resolve `localhost` to IPv6 first; bind explicitly, for example:
-  `uvicorn app.main:app --reload --host ::1 --port 8000`
-  or open `http://127.0.0.1:8000/` instead of `localhost`.
+The **React app** is served by **Vite on port 5173** only. The API on **8000** is JSON (`/api/...`) and `/` redirects to **`/docs`** unless you have built `frontend/dist/index.html`.
 
-## Frontend
+### Easiest: one terminal for both
+
+From the repo root (after `backend/.venv` and `frontend/node_modules` exist):
+
+```bash
+chmod +x scripts/dev.sh
+./scripts/dev.sh
+```
+
+Then open **`http://127.0.0.1:5173`** — you should see **Qwen Social Studio** with Generate / Translate / Presets tabs.
+
+### If port 5173 shows Swagger or `/docs` instead of the React UI
+
+Something else is already using **5173** (often **uvicorn started on the wrong port**). The Vite config uses **`strictPort: true`**, so `npm run dev` should print an error like “Port 5173 is in use”. Fix it by:
+
+1. Stopping whatever is bound to **5173** (check with `lsof -i :5173`).
+2. Starting **uvicorn only on 8000**: `uvicorn app.main:app --reload --host 127.0.0.1 --port 8000`.
+3. Running **`npm run dev`** again in `frontend/`.
+
+### If `http://127.0.0.1:8000/` is 404
+
+- Open **`http://127.0.0.1:8000/docs`** (Swagger) or **`/api/health`** — those always exist.
+- If you ran `npm run build` and have a broken or empty `frontend/dist/` folder, remove it or fix the build; the API only mounts the SPA when **`frontend/dist/index.html`** exists.
+
+## Frontend (manual two terminals)
 
 ```bash
 cd frontend
@@ -42,7 +62,7 @@ npm install
 npm run dev
 ```
 
-Open the URL Vite prints (typically `http://127.0.0.1:5173`). API calls are proxied to the backend on port 8000.
+Use **`http://127.0.0.1:5173`**. Ensure the API is already running on **8000** so the `/api` proxy works.
 
 ## Presets (formats, tones, samples)
 
@@ -56,7 +76,7 @@ The **Translate to pt-BR** tab sends the pasted text to the same local model wit
 
 ## Production-style single server
 
-Build the frontend (`npm run build` in `frontend`), then run the API: if `frontend/dist` exists, the backend serves it at `/` (API remains under `/api/...`).
+Build the frontend (`npm run build` in `frontend`), then run the API: if **`frontend/dist/index.html`** exists, the backend serves the SPA at `/` (API remains under `/api/...`).
 
 ## Configuration
 

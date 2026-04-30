@@ -2,7 +2,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -138,33 +138,13 @@ async def translate(req: TranslateRequest):
     return TranslateResponse(translated=translated)
 
 
-# Optional: serve built frontend from ../frontend/dist in production
+# Serve production build only when index.html exists (empty dist/ would otherwise 404 on /)
 _dist = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
-if _dist.exists():
+_dist_index = _dist / "index.html"
+if _dist_index.is_file():
     app.mount("/", StaticFiles(directory=str(_dist), html=True), name="static")
 else:
 
-    @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-    async def root_landing() -> str:
-        return """<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Qwen Social Studio API</title>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 40rem; margin: 2rem auto; padding: 0 1rem; line-height: 1.5; }
-    code { background: #f4f4f5; padding: 0.15em 0.35em; border-radius: 4px; }
-    a { color: #6d28d9; }
-  </style>
-</head>
-<body>
-  <h1>Qwen Social Studio API</h1>
-  <p>This server exposes JSON under <code>/api/…</code>. There is no page at the root unless you build the frontend into <code>frontend/dist</code>.</p>
-  <ul>
-    <li><a href="/docs">OpenAPI docs (Swagger)</a></li>
-    <li><a href="/api/health">GET /api/health</a></li>
-  </ul>
-  <p><strong>Portal UI:</strong> run <code>npm run dev</code> in the <code>frontend</code> folder and open <a href="http://127.0.0.1:5173">http://127.0.0.1:5173</a> (the dev server proxies <code>/api</code> here).</p>
-</body>
-</html>"""
+    @app.get("/", include_in_schema=False)
+    async def root_redirect():
+        return RedirectResponse(url="/docs")
