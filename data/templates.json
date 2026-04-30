@@ -1,0 +1,12 @@
+{
+  "templates": [
+    {
+      "id": "brand-safety-baseline",
+      "name": "Brand safety baseline",
+      "description": "Default guardrails for claims, medical/financial advice, and tone floors.",
+      "guardrails": "- Do not promise guaranteed results, cures, or financial returns.\n- Avoid discriminatory or harassing language.\n- If the brief is ambiguous on compliance (health, finance, legal), stay conservative and generic.\n- Do not invent statistics, quotes, or endorsements; only use facts implied by the brief.",
+      "skeleton": "",
+      "sample": ""
+    }
+  ]
+}

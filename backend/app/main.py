@@ -10,6 +10,7 @@ from .ollama import chat_completion
 from .presets import load_presets, save_presets
 from .prompts import build_generation_messages, build_translation_messages
 from .settings import settings
+from . import templates_store
 
 app = FastAPI(title="Qwen Social Studio API")
 
@@ -66,6 +67,10 @@ class GenerateItem(BaseModel):
 class GenerateRequest(BaseModel):
     brief: str = Field(..., min_length=1)
     items: list[GenerateItem] = Field(..., min_length=1)
+    template_ids: list[str] = Field(
+        default_factory=list,
+        description="Ingested template IDs whose guardrails are enforced for every generation item",
+    )
     output_language: str = Field(default="English", description="Language label for generated copy")
     temperature: float = Field(default=0.7, ge=0, le=2)
 
@@ -76,6 +81,8 @@ class GenerateResultItem(BaseModel):
     format_name: str
     tone_name: str
     content: str
+    template_ids: list[str] = Field(default_factory=list)
+    template_names: list[str] = Field(default_factory=list)
 
 
 class GenerateResponse(BaseModel):
@@ -88,7 +95,17 @@ async def generate(req: GenerateRequest):
     formats = {f["id"]: f for f in presets.get("formats", [])}
     tones = {t["id"]: t for t in presets.get("tones", [])}
 
+    active_templates: list[dict] = []
+    for tid in req.template_ids:
+        row = templates_store.get_template(tid)
+        if not row:
+            raise HTTPException(status_code=400, detail=f"Unknown template_id={tid}")
+        active_templates.append(row)
+
     results: list[GenerateResultItem] = []
+    tmpl_ids = [t.get("id", "") for t in active_templates]
+    tmpl_names = [str(t.get("name") or t.get("id") or "") for t in active_templates]
+
     for item in req.items:
         fmt = formats.get(item.format_id)
         tone = tones.get(item.tone_id)
@@ -107,6 +124,7 @@ async def generate(req: GenerateRequest):
             tone_instructions=tone_instructions,
             tone_sample=tone.get("sample"),
             output_language=req.output_language,
+            active_templates=active_templates,
         )
         content = await chat_completion(messages, temperature=req.temperature)
         results.append(
@@ -116,9 +134,46 @@ async def generate(req: GenerateRequest):
                 format_name=fmt.get("name", item.format_id),
                 tone_name=tone.get("name", item.tone_id),
                 content=content,
+                template_ids=list(tmpl_ids),
+                template_names=list(tmpl_names),
             )
         )
     return GenerateResponse(results=results)
+
+
+class TemplatePayload(BaseModel):
+    name: str = Field(..., min_length=1)
+    description: str = ""
+    guardrails: str = ""
+    skeleton: str = ""
+    sample: str = ""
+
+
+@app.get("/api/templates")
+async def get_templates():
+    return {"templates": templates_store.list_templates()}
+
+
+@app.post("/api/templates")
+async def create_template(body: TemplatePayload):
+    row = body.model_dump()
+    created = templates_store.upsert_template(row, template_id=None)
+    return created
+
+
+@app.put("/api/templates/{template_id}")
+async def update_template(template_id: str, body: TemplatePayload):
+    try:
+        return templates_store.upsert_template(body.model_dump(), template_id=template_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Template not found") from None
+
+
+@app.delete("/api/templates/{template_id}")
+async def remove_template(template_id: str):
+    if not templates_store.delete_template(template_id):
+        raise HTTPException(status_code=404, detail="Template not found")
+    return {"ok": True}
 
 
 class TranslateRequest(BaseModel):

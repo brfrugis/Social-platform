@@ -1,6 +1,6 @@
 # Qwen Social Studio
 
-Local-first portal to generate social content with **Qwen 8B** (via [Ollama](https://ollama.com)), combining **formats** and **tones** you define in `data/presets.json`. Includes a **Translate to pt-BR** flow for **English or Spanish** source text.
+Local-first **WebUI** to generate social content with **Qwen 8B** (via [Ollama](https://ollama.com)): **formats** and **tones** from `data/presets.json`, plus optional **guardrail templates** from `data/templates.json`. Includes **Translate to pt-BR** for **English or Spanish** source text.
 
 ## Prerequisites
 
@@ -39,7 +39,7 @@ chmod +x scripts/dev.sh
 ./scripts/dev.sh
 ```
 
-Then open **`http://127.0.0.1:5173`** — you should see **Qwen Social Studio** with Generate / Translate / Presets tabs.
+Then open **`http://127.0.0.1:5173`** — you should see the **Qwen Social Studio** WebUI (sidebar: Studio, Translate, Templates, Formats and tones).
 
 ### If port 5173 shows Swagger or `/docs` instead of the React UI
 
@@ -66,13 +66,15 @@ Use **`http://127.0.0.1:5173`**. Ensure the API is already running on **8000** s
 
 ## Presets (formats, tones, samples)
 
-Edit **`data/presets.json`** or use the **Formats & tones** tab in the UI. Each format and tone supports a `sample` string: paste your reference copy there so the model can mirror structure and voice without copying verbatim.
+Edit **`data/presets.json`** or use **Formats and tones** in the sidebar (JSON editor). Each format and tone supports a `sample` string: paste reference copy so the model can mirror structure and voice without copying verbatim.
 
-After editing on disk, use **Refresh** in the app (or restart the API if you bypass the file the API reads).
+## Templates (guardrails)
+
+Ingest reusable **guardrail** packs under **Templates** in the UI (stored in **`data/templates.json`**). Each template has **Guardrails** (mandatory rules), optional **Structure** (skeleton / placeholders), and optional **Sample**. In **Studio**, select which templates apply to the batch; the model is told these rules win over format or tone when they conflict on compliance or brand safety.
 
 ## Translation
 
-The **Translate to pt-BR** tab sends the pasted text to the same local model with a dedicated Brazilian Portuguese translation prompt. Source language is selectable (**English** or **Spanish**).
+**Translate** in the sidebar sends pasted text to the same local model with a pt-BR translation prompt. Source language is **English** or **Spanish**.
 
 ## Production-style single server
 
@@ -85,4 +87,5 @@ Build the frontend (`npm run build` in `frontend`), then run the API: if **`fron
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama HTTP API |
 | `OLLAMA_MODEL` | `qwen2.5:8b` | Model tag |
 | `PRESETS_PATH` | `../data/presets.json` | Path relative to `backend/` unless absolute |
+| `TEMPLATES_PATH` | `../data/templates.json` | Guardrail templates store |
 | `REQUEST_TIMEOUT_S` | `600` | Long generations on CPU |
