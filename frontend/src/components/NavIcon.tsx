@@ -1,0 +1,51 @@
+import type { NavId } from '../navConfig'
+
+const svgProps = {
+  className: 'nav-icon',
+  width: 20,
+  height: 20,
+  viewBox: '0 0 20 20',
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeWidth: 1.45,
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+}
+
+export default function NavIcon({ id }: { id: NavId }) {
+  switch (id) {
+    case 'studio':
+      return (
+        <svg {...svgProps} aria-hidden>
+          <rect x="4" y="4.5" width="12" height="4" rx="1" />
+          <rect x="4" y="11.5" width="12" height="4" rx="1" />
+          <path d="M7 6.5h6M7 13.5h4" opacity="0.45" />
+        </svg>
+      )
+    case 'translate':
+      return (
+        <svg {...svgProps} aria-hidden>
+          <path d="M4 6h12M4 10h10M4 14h8" />
+          <path d="M14 10l2.5 4M14 10l2.5-4" />
+        </svg>
+      )
+    case 'templates':
+      return (
+        <svg {...svgProps} aria-hidden>
+          <line x1="5" y1="5.5" x2="15" y2="5.5" />
+          <line x1="5" y1="8.5" x2="15" y2="8.5" />
+          <line x1="5" y1="11.5" x2="12" y2="11.5" />
+          <line x1="5" y1="14.5" x2="15" y2="14.5" />
+        </svg>
+      )
+    case 'library':
+      return (
+        <svg {...svgProps} aria-hidden>
+          <path d="M6 4.5h8a1 1 0 011 1v10a1 1 0 01-1 1H6a1 1 0 01-1-1v-10a1 1 0 011-1z" />
+          <path d="M7.5 7.5h5M7.5 10h5M7.5 12.5h3" opacity="0.5" />
+        </svg>
+      )
+    default:
+      return null
+  }
+}

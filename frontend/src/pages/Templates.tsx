@@ -117,7 +117,7 @@ export default function Templates() {
   }
 
   return (
-    <div className="page-stack templates-layout">
+    <div className="page-stack">
       {error && (
         <div className="banner error" role="alert">
           {error}
@@ -125,6 +125,7 @@ export default function Templates() {
       )}
       {msg && !msg.startsWith('Error') && <p className="ok banner soft">{msg}</p>}
 
+      <div className="templates-layout">
       <aside className="tpl-sidebar">
         <div className="row spread">
           <h2 className="panel-title">Library</h2>
@@ -135,27 +136,35 @@ export default function Templates() {
         <button type="button" className="btn secondary block-btn" onClick={newTemplate}>
           New template
         </button>
-        <ul className="tpl-list">
-          {list.map((t) => (
-            <li key={t.id}>
-              <button
-                type="button"
-                className={`tpl-list-item ${selectedId === t.id ? 'active' : ''}`}
-                onClick={() => selectOne(t)}
-              >
-                <span className="tpl-list-name">{t.name}</span>
-                {t.description && (
-                  <span className="tpl-list-desc">{t.description}</span>
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
+        {list.length === 0 ? (
+          <div className="empty-sidebar">
+            <p>No templates yet</p>
+            <p className="muted small">Create one to reuse guardrails in Studio.</p>
+          </div>
+        ) : (
+          <ul className="tpl-list">
+            {list.map((t) => (
+              <li key={t.id}>
+                <button
+                  type="button"
+                  className={`tpl-list-item ${selectedId === t.id ? 'active' : ''}`}
+                  onClick={() => selectOne(t)}
+                >
+                  <span className="tpl-list-name">{t.name}</span>
+                  {t.description && (
+                    <span className="tpl-list-desc">{t.description}</span>
+                  )}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </aside>
 
       <div className="tpl-editor">
         <section className="step-card">
-          <h2 className="panel-title">
+          <p className="section-eyebrow">Editor</p>
+          <h2 className="panel-title flush-top">
             {selectedId ? 'Edit template' : 'Create template'}
           </h2>
           <p className="step-desc">
@@ -249,6 +258,7 @@ export default function Templates() {
             )}
           </div>
         </section>
+      </div>
       </div>
     </div>
   )

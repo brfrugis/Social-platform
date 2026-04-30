@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 
 type Presets = { formats: unknown[]; tones: unknown[] }
@@ -17,6 +17,8 @@ export default function Library() {
   useEffect(() => {
     void load().catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }, [load])
+
+  const lineCount = useMemo(() => presetJson.split('\n').length, [presetJson])
 
   const savePresets = async () => {
     setSaveMsg(null)
@@ -44,29 +46,39 @@ export default function Library() {
           {error}
         </div>
       )}
+
       <section className="step-card">
-        <h2 className="panel-title">Formats and tones (JSON)</h2>
-        <p className="step-desc">
-          Advanced configuration stored in <code>data/presets.json</code>. Use{' '}
-          <code>sample</code> fields for format and tone references. Back up the file
-          before large edits.
-        </p>
+        <div className="library-toolbar">
+          <div>
+            <h2 className="panel-title flush-top">Formats and tones</h2>
+            <p className="step-desc" style={{ margin: '0.35rem 0 0' }}>
+              Stored in <code>data/presets.json</code>. Use <code>sample</code> on each
+              format and tone for on-brand references.
+            </p>
+          </div>
+          <span className="library-meta">{lineCount} lines</span>
+        </div>
+
         <textarea
           className="input code"
           value={presetJson}
           onChange={(e) => setPresetJson(e.target.value)}
           spellCheck={false}
         />
+
         <div className="row actions">
           <button type="button" className="btn primary" onClick={() => void savePresets()}>
             Save presets
           </button>
           <button type="button" className="btn secondary" onClick={() => void load()}>
-            Reload
+            Reload from server
           </button>
         </div>
+
         {saveMsg && (
-          <p className={saveMsg.startsWith('Saved') ? 'ok' : 'banner error'}>{saveMsg}</p>
+          <p className={`save-feedback ${saveMsg.startsWith('Saved') ? 'ok' : 'banner error'}`}>
+            {saveMsg}
+          </p>
         )}
       </section>
     </div>

@@ -1,18 +1,29 @@
 :root {
-  --text: #6b6375;
-  --text-h: #08060d;
-  --bg: #fff;
-  --border: #e5e4e7;
-  --code-bg: #f4f3ec;
-  --accent: #aa3bff;
-  --accent-bg: rgba(170, 59, 255, 0.1);
-  --accent-border: rgba(170, 59, 255, 0.5);
-  --sidebar-bg: #f8f8fa;
+  --text: #5c5668;
+  --text-h: #12101a;
+  --text-muted: #8a8494;
+  --bg: #faf9fc;
+  --surface: #ffffff;
+  --border: #e8e6ed;
+  --code-bg: #f0eef5;
+  --accent: #5b3fd9;
+  --accent-hover: #4a32b8;
+  --accent-bg: rgba(91, 63, 217, 0.09);
+  --accent-border: rgba(91, 63, 217, 0.35);
+  --accent-soft: rgba(91, 63, 217, 0.06);
+  --sidebar-bg: #f3f1f8;
+  --success: #15803d;
+  --success-bg: rgba(21, 128, 61, 0.1);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-sm: 0 1px 2px rgba(18, 16, 26, 0.05);
+  --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
 
-  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-  --mono: ui-monospace, Consolas, monospace;
+  --sans: 'DM Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, 'Cascadia Code', 'Source Code Pro', Menlo, Consolas, monospace;
 
-  font: 16px/145% var(--sans);
+  font: 15px/1.5 var(--sans);
   color: var(--text);
   background: var(--bg);
   font-synthesis: none;
@@ -24,15 +35,23 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --text: #9ca3af;
-    --text-h: #f3f4f6;
-    --bg: #16171d;
-    --border: #2e303a;
-    --code-bg: #1f2028;
-    --accent: #c084fc;
-    --accent-bg: rgba(192, 132, 252, 0.15);
-    --accent-border: rgba(192, 132, 252, 0.5);
-    --sidebar-bg: #1a1b22;
+    --text: #a8a3b5;
+    --text-h: #f4f2fa;
+    --text-muted: #7d7788;
+    --bg: #0f0e14;
+    --surface: #17161f;
+    --border: #2a2835;
+    --code-bg: #1e1c28;
+    --accent: #9b87f5;
+    --accent-hover: #b8a9f8;
+    --accent-bg: rgba(155, 135, 245, 0.12);
+    --accent-border: rgba(155, 135, 245, 0.45);
+    --accent-soft: rgba(155, 135, 245, 0.08);
+    --sidebar-bg: #14131a;
+    --success: #4ade80;
+    --success-bg: rgba(74, 222, 128, 0.12);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35);
+    --focus: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent);
   }
 }
 
@@ -44,11 +63,13 @@ body {
   margin: 0;
 }
 
-code {
+code,
+.kbd {
   font-family: var(--mono);
-  font-size: 0.9em;
-  padding: 0.1em 0.25em;
-  border-radius: 4px;
+  font-size: 0.84em;
+  padding: 0.12em 0.38em;
+  border-radius: var(--radius-sm);
   background: var(--code-bg);
   color: var(--text-h);
+  border: 1px solid var(--border);
 }

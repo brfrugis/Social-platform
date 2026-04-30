@@ -42,11 +42,18 @@ export default function Translate() {
           {error}
         </div>
       )}
+
+      <p className="translate-lead">
+        Same local model as Studio, tuned for faithful Brazilian Portuguese. Best for
+        posts, captions, and client-facing copy.
+      </p>
+
       <div className="grid-translate">
         <section className="step-card">
-          <h2 className="panel-title">Source</h2>
+          <p className="section-eyebrow">Source</p>
+          <h2 className="panel-title flush-top">Paste your text</h2>
           <label className="field">
-            <span>Source language</span>
+            <span>Language</span>
             <select
               value={sourceLanguage}
               onChange={(e) => setSourceLanguage(e.target.value)}
@@ -62,7 +69,7 @@ export default function Translate() {
             className="input tall"
             value={translateIn}
             onChange={(e) => setTranslateIn(e.target.value)}
-            placeholder="Paste Spanish or English text…"
+            placeholder="Paste paragraphs here. Line breaks are preserved when possible."
           />
           <button
             type="button"
@@ -73,21 +80,30 @@ export default function Translate() {
             {translating ? 'Translating…' : 'Translate to pt-BR'}
           </button>
         </section>
+
         <section className="step-card">
-          <h2 className="panel-title">Brazilian Portuguese</h2>
+          <p className="section-eyebrow">Result</p>
+          <h2 className="panel-title flush-top">Brazilian Portuguese</h2>
           {translated ? (
             <>
               <pre className="result-body flat">{translated}</pre>
-              <button
-                type="button"
-                className="btn secondary"
-                onClick={() => void navigator.clipboard.writeText(translated)}
-              >
-                Copy translation
-              </button>
+              <div className="row actions">
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() => void navigator.clipboard.writeText(translated)}
+                >
+                  Copy translation
+                </button>
+              </div>
             </>
           ) : (
-            <p className="muted">Translation output appears here.</p>
+            <div className="empty-out empty-out-tight">
+              <strong>Output will show here</strong>
+              <span className="muted">
+                Run a translation to see natural pt-BR phrasing and idioms.
+              </span>
+            </div>
           )}
         </section>
       </div>

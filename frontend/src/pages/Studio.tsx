@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 
 type Format = { id: string; name: string; description: string; sample?: string }
@@ -36,6 +36,11 @@ export default function Studio() {
   const [generating, setGenerating] = useState(false)
   const [results, setResults] = useState<GenResult[]>([])
   const [error, setError] = useState<string | null>(null)
+
+  const variantCount = useMemo(
+    () => Object.values(selectedPairs).filter(Boolean).length,
+    [selectedPairs],
+  )
 
   const load = useCallback(async () => {
     const [p, t] = await Promise.all([
@@ -118,23 +123,45 @@ export default function Studio() {
         </div>
       )}
 
+      <ol className="workflow-rail" aria-label="Suggested workflow">
+        <li className="workflow-step">
+          <span className="w-num">1</span>
+          Guardrails
+        </li>
+        <li className="workflow-step">
+          <span className="w-num">2</span>
+          Brief
+        </li>
+        <li className="workflow-step">
+          <span className="w-num">3</span>
+          Formats
+        </li>
+        <li className="workflow-step">
+          <span className="w-num">4</span>
+          Output
+        </li>
+      </ol>
+
       <section className="step-card">
         <div className="step-head">
           <span className="step-num">1</span>
           <div>
             <h2 className="step-title">Guardrail templates</h2>
             <p className="step-desc">
-              Ingest reusable rules under Templates. Select any combination here; they
-              apply to every variant you generate in this run.
+              Choose saved rules (from Templates). They apply to every variant in this
+              batch. Skip this step if you do not need extra constraints.
             </p>
           </div>
           <span className="step-badge">{selectedTplCount} selected</span>
         </div>
         {templates.length === 0 ? (
-          <p className="muted">
-            No templates yet. Open <strong>Templates</strong> in the sidebar to add
-            guardrails (claims, disclosures, structure, brand voice limits).
-          </p>
+          <div className="empty-out">
+            <strong>No templates yet</strong>
+            <span className="muted">
+              Open <strong>Templates</strong> in the sidebar to add disclosures, claim
+              limits, or layout skeletons, then return here to activate them.
+            </span>
+          </div>
         ) : (
           <div className="tpl-grid">
             {templates.map((tpl) => {
@@ -164,15 +191,18 @@ export default function Studio() {
           <div className="step-head">
             <span className="step-num">2</span>
             <div>
-              <h2 className="step-title">Brief and model</h2>
-              <p className="step-desc">What you need written, plus language and creativity.</p>
+              <h2 className="step-title">Brief and creativity</h2>
+              <p className="step-desc">
+                Describe what to write. Temperature controls randomness: lower is more
+                predictable, higher is more varied.
+              </p>
             </div>
           </div>
           <textarea
             className="input tall"
             value={brief}
             onChange={(e) => setBrief(e.target.value)}
-            placeholder="Topic, product, audience, facts to include, words to avoid…"
+            placeholder="Example: Product launch for … Audience: … Include … Avoid …"
           />
           <div className="row">
             <label className="field">
@@ -188,10 +218,31 @@ export default function Studio() {
                 ))}
               </select>
             </label>
+            <label className="field range-field">
+              <span>Temperature · {temperature.toFixed(2)}</span>
+              <div className="range-row">
+                <span>Precise</span>
+                <input
+                  type="range"
+                  className="temp-slider"
+                  min={0}
+                  max={2}
+                  step={0.05}
+                  value={temperature}
+                  onChange={(e) => setTemperature(Number(e.target.value))}
+                  aria-valuemin={0}
+                  aria-valuemax={2}
+                  aria-valuenow={temperature}
+                  aria-label="Temperature"
+                />
+                <span>Creative</span>
+              </div>
+            </label>
             <label className="field">
-              <span>Temperature</span>
+              <span>Fine tune</span>
               <input
                 type="number"
+                className="input input-compact"
                 min={0}
                 max={2}
                 step={0.05}
@@ -207,15 +258,16 @@ export default function Studio() {
               disabled={generating}
               onClick={() => void runGenerate()}
             >
-              {generating ? 'Generating…' : 'Run generation'}
+              {generating ? 'Working…' : 'Generate'}
             </button>
+            <span className="step-badge">{variantCount} variant(s)</span>
             <button type="button" className="btn secondary" onClick={() => void load()}>
-              Reload data
+              Reload presets
             </button>
           </div>
           <p className="hint">
-            Each format and tone pair runs one model call. Large batches can take a long
-            time on CPU.
+            Each checked format and tone pair runs one model call. Many variants can take
+            noticeable time on CPU.
           </p>
         </section>
 
@@ -224,7 +276,9 @@ export default function Studio() {
             <span className="step-num">3</span>
             <div>
               <h2 className="step-title">Formats and tones</h2>
-              <p className="step-desc">Pick one or more combinations to produce in parallel.</p>
+              <p className="step-desc">
+                Mix channels and voices. Hover a format name to see its full description.
+              </p>
             </div>
             <div className="row tight">
               <button type="button" className="btn secondary small" onClick={selectAllPairs}>
@@ -237,19 +291,25 @@ export default function Studio() {
           </div>
           <div className="matrix scroll-matrix">
             {presets.formats.length === 0 || presets.tones.length === 0 ? (
-              <p className="muted">
-                No formats or tones. Configure them under <strong>Formats and tones</strong>.
-              </p>
+              <div className="empty-out">
+                <strong>Nothing to pick yet</strong>
+                <span className="muted">
+                  Add formats and tones under <strong>Formats and tones</strong> in the
+                  sidebar.
+                </span>
+              </div>
             ) : (
               presets.formats.map((f) => (
                 <div key={f.id} className="matrix-row">
-                  <div className="matrix-format">{f.name}</div>
+                  <div className="matrix-format" title={f.description}>
+                    {f.name}
+                  </div>
                   <div className="matrix-cells">
                     {presets.tones.map((t) => {
                       const k = `${f.id}::${t.id}`
                       const on = !!selectedPairs[k]
                       return (
-                        <label key={k} className={`chip ${on ? 'on' : ''}`}>
+                        <label key={k} className={`chip ${on ? 'on' : ''}`} title={t.name}>
                           <input
                             type="checkbox"
                             checked={on}
@@ -272,11 +332,17 @@ export default function Studio() {
           <span className="step-num">4</span>
           <div>
             <h2 className="step-title">Output</h2>
-            <p className="step-desc">Copy results into your scheduling tool.</p>
+            <p className="step-desc">Review each block and use Copy to paste elsewhere.</p>
           </div>
         </div>
         {results.length === 0 ? (
-          <p className="muted">Generated copy appears here after you run generation.</p>
+          <div className="empty-out">
+            <strong>Ready when you are</strong>
+            <span className="muted">
+              After you click <strong>Generate</strong>, every variant appears here with its
+              format, tone, and guardrail labels.
+            </span>
+          </div>
         ) : (
           <ul className="results">
             {results.map((r, i) => (

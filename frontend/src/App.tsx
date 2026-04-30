@@ -1,19 +1,17 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from './lib/api'
+import NavIcon from './components/NavIcon'
 import Studio from './pages/Studio'
 import Translate from './pages/Translate'
 import Templates from './pages/Templates'
 import Library from './pages/Library'
+import { NAV, type NavId } from './navConfig'
 import './App.css'
 
-export type NavId = 'studio' | 'translate' | 'templates' | 'library'
-
-const NAV: { id: NavId; label: string; hint: string }[] = [
-  { id: 'studio', label: 'Studio', hint: 'Brief, guardrails, formats, output' },
-  { id: 'translate', label: 'Translate', hint: 'English or Spanish to pt-BR' },
-  { id: 'templates', label: 'Templates', hint: 'Ingest guardrails and structure' },
-  { id: 'library', label: 'Formats and tones', hint: 'JSON presets' },
-]
+function modelFromHealth(health: string): string {
+  const i = health.indexOf(' @ ')
+  return i === -1 ? health : health.slice(0, i).trim()
+}
 
 export default function App() {
   const [nav, setNav] = useState<NavId>('studio')
@@ -32,7 +30,7 @@ export default function App() {
       setBanner(
         e instanceof Error
           ? e.message
-          : 'API unreachable. Start the backend on port 8000.',
+          : 'Cannot reach the API. Start the backend on port 8000, then refresh.',
       )
     }
   }, [])
@@ -41,14 +39,16 @@ export default function App() {
     void loadHealth()
   }, [loadHealth])
 
+  const current = NAV.find((n) => n.id === nav)
+
   return (
     <div className="app-shell">
-      <aside className="shell-aside" aria-label="Primary">
+      <aside className="shell-aside" aria-label="Main navigation">
         <div className="brand">
           <span className="brand-mark" aria-hidden />
           <div>
             <div className="brand-title">GIGI-AI</div>
-            <div className="brand-sub">Create · translate · guardrails</div>
+            <div className="brand-sub">Local content studio</div>
           </div>
         </div>
         <nav className="shell-nav">
@@ -58,32 +58,52 @@ export default function App() {
               type="button"
               className={`shell-link ${nav === item.id ? 'active' : ''}`}
               onClick={() => setNav(item.id)}
+              title={item.hint}
             >
-              <span className="shell-link-label">{item.label}</span>
-              <span className="shell-link-hint">{item.hint}</span>
+              <span className="shell-link-icon" aria-hidden>
+                <NavIcon id={item.id} />
+              </span>
+              <span className="shell-link-text">
+                <span className="shell-link-label">{item.label}</span>
+                <span className="shell-link-hint">{item.hint}</span>
+              </span>
             </button>
           ))}
         </nav>
-        <div className="shell-footer">
-          <button type="button" className="btn secondary small block-btn" onClick={() => void loadHealth()}>
-            Refresh status
-          </button>
-          {health ? <div className="health-line">{health}</div> : null}
+        <div className="shell-aside-foot">
+          <span className="aside-hint">Runs in your browser. Model stays on your machine via Ollama.</span>
         </div>
       </aside>
 
       <div className="shell-body">
-        <header className="shell-header">
-          <div>
-            <h1 className="shell-page-title">
-              {NAV.find((n) => n.id === nav)?.label ?? 'Studio'}
-            </h1>
-            <p className="shell-page-sub">{NAV.find((n) => n.id === nav)?.hint}</p>
+        <header className="shell-topbar">
+          <div className="topbar-titles">
+            <h1 className="shell-page-title">{current?.label ?? 'Studio'}</h1>
+            <p className="shell-page-sub">{current?.hint}</p>
+          </div>
+          <div className="topbar-actions">
+            {health ? (
+              <span className="status-pill" title={health}>
+                <span className="status-dot" aria-hidden />
+                {modelFromHealth(health)}
+              </span>
+            ) : (
+              !banner && (
+                <span className="status-pill status-pill-muted">Checking connection…</span>
+              )
+            )}
+            <button
+              type="button"
+              className="btn btn-ghost"
+              onClick={() => void loadHealth()}
+            >
+              Refresh
+            </button>
           </div>
         </header>
 
         {banner && (
-          <div className="banner error" role="status">
+          <div className="banner banner-inline error" role="status">
             {banner}
           </div>
         )}
@@ -96,7 +116,8 @@ export default function App() {
         </main>
 
         <footer className="shell-legal">
-          GIGI-AI — model and paths in <code>backend/.env</code>. API port 8000, UI port 5173.
+          GIGI-AI · API <code className="kbd">:8000</code> · UI <code className="kbd">:5173</code> ·
+          Configure in <code className="kbd">backend/.env</code>
         </footer>
       </div>
     </div>
