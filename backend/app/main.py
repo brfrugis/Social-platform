@@ -12,7 +12,7 @@ from .prompts import build_generation_messages, build_translation_messages
 from .settings import settings
 from . import templates_store
 
-app = FastAPI(title="Qwen Social Studio API")
+app = FastAPI(title="GIGI-AI API")
 
 app.add_middleware(
     CORSMiddleware,

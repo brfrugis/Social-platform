@@ -47,8 +47,8 @@ export default function App() {
         <div className="brand">
           <span className="brand-mark" aria-hidden />
           <div>
-            <div className="brand-title">Qwen Social Studio</div>
-            <div className="brand-sub">Local WebUI</div>
+            <div className="brand-title">GIGI-AI</div>
+            <div className="brand-sub">Create · translate · guardrails</div>
           </div>
         </div>
         <nav className="shell-nav">
@@ -96,7 +96,7 @@ export default function App() {
         </main>
 
         <footer className="shell-legal">
-          Model and paths: <code>backend/.env</code> — API on port 8000, this UI on 5173.
+          GIGI-AI — model and paths in <code>backend/.env</code>. API port 8000, UI port 5173.
         </footer>
       </div>
     </div>
