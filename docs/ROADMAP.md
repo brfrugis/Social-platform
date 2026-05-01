@@ -37,7 +37,7 @@ It is a planning document: priorities and sequencing should be revisited as usag
 
 **Professional local environment (what “sustained local” means):**
 
-- **Documented golden paths** — Pinned or stated Python/Node versions, one-command bootstrap (`install-all`, `dev.sh`), and troubleshooting in **INSTALLATION** / runbooks so “works on my machine” shrinks over time.
+- **Documented golden paths** — Pinned or stated Python/Node versions, one-command bootstrap (`install-all` pulls **text + image** Ollama models by default, `dev.sh`), and troubleshooting in **INSTALLATION** / **IMAGE_GENERATION** / runbooks so “works on my machine” shrinks over time.
 - **Reproducible packaging** — Optional **Docker Compose** (or similar) for API + UI + optional dependencies so local matches **API contracts and env variable names** used in cloud, without pretending to be EKS.
 - **Explicit deployment profile** — A single concept such as `DEPLOYMENT=local` vs `DEPLOYMENT=cloud` (or feature flags) so code paths for Cognito, queues, and Redis are **swapped cleanly** rather than scattered `if os.getenv` checks.
 - **Honest limits** — UI and docs state **recommended max concurrency** and behavior under overload for local (queue vs reject vs degrade), aligned with how you run it today.

@@ -1,5 +1,19 @@
 # Image generation: Ollama vs Qwen-Image-2512
 
+## Deployment checklist (smooth rollout)
+
+1. **Install Ollama** on the inference host and keep it running (`ollama serve` or the menu app).  
+2. **`ollama pull`** the **text** model (`OLLAMA_MODEL`, e.g. `qwen2.5:14b`) and the **image** model (`OLLAMA_IMAGE_MODEL`, default **`x/z-image-turbo`**).  
+3. Copy **`backend/.env.example`** → **`backend/.env`** (or merge) so **`OLLAMA_IMAGE_MODEL`** matches the tag you pulled.  
+4. Set **`REQUEST_TIMEOUT_S`** high enough for slow CPUs/GPUs on image runs (default `600`; increase if Studio times out).  
+5. **Restart the FastAPI process** after any `.env` change.  
+6. Confirm **`GET /api/health`** returns matching **`ollama_model`** and **`ollama_image_model`**.  
+7. **Optional:** `curl` smoke test below; then Studio → **Generate image** on a variant.
+
+For a full machine bootstrap (both pulls, venv, npm, `.env`), use **`./scripts/install-all.sh`** from the repo root — see [INSTALLATION.md](./INSTALLATION.md) for `INSTALL_IMAGE_MODEL` / `SKIP_IMAGE_MODEL_PULL`.
+
+---
+
 Studio calls Ollama’s **`POST /api/generate`** with the model name from **`OLLAMA_IMAGE_MODEL`**. That only works for models Ollama actually runs as **text-to-image** endpoints (response includes an `image` field).
 
 ## Qwen-Image-2512 is not a default Ollama model

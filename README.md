@@ -1,6 +1,6 @@
 # GIGI-AI
 
-**GIGI-AI** is a local-first **WebUI** for social content, powered by **Qwen 14B** (via [Ollama](https://ollama.com)): **formats** and **tones** from `data/presets.json`, plus optional **guardrail templates** from `data/templates.json`. Includes **Translate to pt-BR** for **English or Spanish** source text.
+**GIGI-AI** is a local-first **WebUI** for social content, powered by **Qwen 14B** (via [Ollama](https://ollama.com)): **formats** and **tones** from `data/presets.json`, plus optional **guardrail templates** from `data/templates.json`. Includes **Translate to pt-BR** for **English or Spanish** source text, and **Studio** optional **images** via a second Ollama model (default **`x/z-image-turbo`** — see [docs/IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md)).
 
 ## Documentation
 
@@ -11,6 +11,7 @@
 | **[docs/README.md](docs/README.md)** | Index of the `docs/` folder. |
 | **[docs/LOCAL_POSTGRES.md](docs/LOCAL_POSTGRES.md)** | Optional **PostgreSQL** for Phase 4 (customers + social connections): Docker, Alembic, `/api/tenants/*`. |
 | **[docs/INTEGRATIONS_PLATFORMS.md](docs/INTEGRATIONS_PLATFORMS.md)** | **Integrations contract** — platform-specific IDs (LinkedIn URNs, Meta Graph IDs, X user ids) and vendor doc links. |
+| **[docs/IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md)** | **Studio images:** `OLLAMA_IMAGE_MODEL` (default `x/z-image-turbo`), `ollama pull`, verification, Qwen-Image vs Ollama. |
 | **This README (below)** | **Architecture, data flows, and user journeys** — Mermaid diagrams for system context, Studio, Translate, tenant API, and persistence. |
 
 ## Architecture, data flows, and user journeys
@@ -37,7 +38,7 @@ flowchart TB
     FILES["Read/write data/presets.json, data/templates.json"]
   end
   subgraph external["Local services"]
-    OLL["Ollama :11434"]
+    OLL["Ollama :11434 — text /api/chat + image /api/generate"]
     PG["PostgreSQL optional"]
   end
   SPA --> PROXY
@@ -177,24 +178,31 @@ flowchart LR
 | **React** | Navigation, forms, bridge context, `localStorage` for workspace + history, `tenantApi` header injection |
 | **Vite proxy** | Same-origin `/api` during dev |
 | **FastAPI** | REST, preset/template CRUD, generation and translate orchestration, tenant CRUD when `DATABASE_URL` is set |
-| **Ollama** | Local LLM inference |
+| **Ollama** | Local inference: **`/api/chat`** (text) + **`/api/generate`** (image model from `OLLAMA_IMAGE_MODEL`) |
 | **PostgreSQL** | Optional multi-tenant metadata and integration rows |
 | **JSON files** | Authoring surface for presets and templates (also editable in UI where implemented) |
 
-For step-by-step product copy aligned with the UI, see **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)**. For install commands, see **[docs/INSTALLATION.md](docs/INSTALLATION.md)**.
+For step-by-step product copy aligned with the UI, see **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)**. For install commands, see **[docs/INSTALLATION.md](docs/INSTALLATION.md)**. For image model tags and deployment checks, see **[docs/IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md)**.
 
-**One-command setup (macOS / Linux):** after cloning, run **`./scripts/install-all.sh`** (installs Ollama if missing, pulls the default model, creates `backend/.venv`, runs `npm install`, copies `.env`). See [docs/INSTALLATION.md](docs/INSTALLATION.md) for options and Windows notes.
+**One-command setup (macOS / Linux):** after cloning, run **`./scripts/install-all.sh`** (installs Ollama if missing, pulls the **text** and **image** default models, creates `backend/.venv`, runs `npm install`, copies `.env`). See [docs/INSTALLATION.md](docs/INSTALLATION.md) for options and Windows notes.
 
 ## Prerequisites
 
 1. **Ollama** installed and running (`ollama serve` is usually automatic after install).
-2. Pull a Qwen 14B-class model (name must match your env):
+2. Pull a Qwen 14B-class **text** model (name must match `OLLAMA_MODEL` in `backend/.env`):
 
    ```bash
    ollama pull qwen2.5:14b
    ```
 
    Other tags (for example `qwen2.5:8b` or `qwen2.5:7b`) work if you set `OLLAMA_MODEL` accordingly.
+3. Pull the **image** model for Studio (**`OLLAMA_IMAGE_MODEL`**, default **`x/z-image-turbo`**):
+
+   ```bash
+   ollama pull x/z-image-turbo
+   ```
+
+   Details: [docs/IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md).
 
 ## Backend
 
@@ -205,7 +213,7 @@ cd backend
 python3.11 -m venv .venv   # or: python3.12 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env        # optional: edit OLLAMA_MODEL / OLLAMA_BASE_URL
+cp .env.example .env        # optional: edit OLLAMA_MODEL, OLLAMA_IMAGE_MODEL, OLLAMA_BASE_URL
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
@@ -261,7 +269,7 @@ Ingest reusable **guardrail** packs under **Templates** in the UI (stored in **`
 
 ## Token usage (monitoring)
 
-Ollama’s **`/api/chat`** responses include **`prompt_eval_count`** (input tokens evaluated) and **`eval_count`** (output tokens). GIGI-AI forwards these on **`POST /api/generate`** (per variant + **session totals**) and **`POST /api/translate`**, and the **Studio** / **Translate** screens show a short summary after each run.
+Ollama’s **`/api/chat`** responses include **`prompt_eval_count`** and **`eval_count`**. GIGI-AI forwards these on **`POST /api/generate`** (Studio copy: per variant + **session totals**), **`POST /api/translate`**, and the Studio **image** endpoints (**`/api/studio/image-prompt`** uses chat; **`/api/studio/generate-image`** uses **`/api/generate`** on the image model). The **Studio** / **Translate** screens show a short summary after each run.
 
 **Caveats:** Ollama may **omit** counts when prompts are **cached**, or in edge cases; totals then sum only what was returned. This is local inference—there is no cloud “billing meter”; use these numbers for **capacity planning** and **rough cost** if you compare to hosted API $/1K tokens.
 
@@ -270,6 +278,8 @@ Ollama’s **`/api/chat`** responses include **`prompt_eval_count`** (input toke
 ## Production-style single server
 
 Build the frontend (`npm run build` in `frontend`), then run the API: if **`frontend/dist/index.html`** exists, the backend serves the SPA at `/` (API remains under `/api/...`).
+
+**Before go-live:** pull the **text** model (`OLLAMA_MODEL`, e.g. `qwen2.5:14b`) and the **image** model (`OLLAMA_IMAGE_MODEL`, default **`x/z-image-turbo`**) on the host running Ollama; copy `backend/.env.example` → `backend/.env` and align those tags. See [docs/INSTALLATION.md](docs/INSTALLATION.md) and [docs/IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md).
 
 ## Configuration
 

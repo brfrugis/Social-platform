@@ -7,8 +7,9 @@ This guide follows the **same structure and labels** as the app so you can read 
 ## Before you open the app
 
 1. **Ollama** is running (menu bar app on macOS, or `ollama serve` where you use it).
-2. **API** is on **`http://127.0.0.1:8000`** (FastAPI / Uvicorn from `backend/`).
-3. **WebUI** is on **`http://127.0.0.1:5173`** (`npm run dev` in `frontend/`), or use **`./scripts/dev.sh`** from the repo root to start both.
+2. **Models pulled:** text (**`OLLAMA_MODEL`**, e.g. `qwen2.5:14b`) and, for Studio **Generate image**, the **image** model (**`OLLAMA_IMAGE_MODEL`**, default **`x/z-image-turbo`**). See [INSTALLATION.md](./INSTALLATION.md) §4 and [IMAGE_GENERATION.md](./IMAGE_GENERATION.md).
+3. **API** is on **`http://127.0.0.1:8000`** (FastAPI / Uvicorn from `backend/`).
+4. **WebUI** is on **`http://127.0.0.1:5173`** (`npm run dev` in `frontend/`), or use **`./scripts/dev.sh`** from the repo root to start both.
 
 **Tip:** Use **`127.0.0.1`** in the browser if `localhost` misbehaves (IPv4 vs IPv6).
 
@@ -19,7 +20,7 @@ This guide follows the **same structure and labels** as the app so you can read 
 | Element | What it does |
 |--------|----------------|
 | **Title + subtitle** | Reminds you which area you are in and what it is for. |
-| **Status pill** (green dot) | Shows the **Ollama model tag** (e.g. `qwen2.5:14b`). Hover for full text including the Ollama base URL. |
+| **Status pill** (green dot) | Shows the **Ollama text model** tag (e.g. `qwen2.5:14b`). Hover for the full line, including **image model** (`image: …`) and base URL. |
 | **Refresh** | Re‑calls **`/api/health`**. Use this after changing `backend/.env` or restarting Ollama. |
 | **Red banner** | API unreachable — start Uvicorn on **8000**, not on 5173. |
 

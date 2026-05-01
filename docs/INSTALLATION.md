@@ -25,7 +25,7 @@ Used to clone the repository.
 
 ## 3. Ollama (local LLM runtime)
 
-Runs the **Qwen** model and exposes HTTP **`/api/chat`** on port **11434** by default.
+Runs **text** models via **`/api/chat`** and **image** models via **`/api/generate`** on port **11434** by default (same daemon).
 
 - **Website:** [https://ollama.com](https://ollama.com)  
 - **Install:** official installer or package manager (e.g. `brew install ollama` on macOS).  
@@ -37,7 +37,9 @@ Runs the **Qwen** model and exposes HTTP **`/api/chat`** on port **11434** by de
 
 ---
 
-## 4. Model weights (Qwen 2.5)
+## 4. Model weights (Ollama)
+
+### 4.1 Text — Qwen 2.5 (Studio copy, Translate)
 
 GIGI-AI defaults to **`qwen2.5:14b`** (see `backend/.env.example` and `backend/app/settings.py`).
 
@@ -47,6 +49,19 @@ ollama pull qwen2.5:14b
 
 - **List:** `ollama list`  
 - **Other tags:** set `OLLAMA_MODEL` in `backend/.env` (e.g. `qwen2.5:8b`).
+
+### 4.2 Image — Studio “Generate image”
+
+Studio calls Ollama **`POST /api/generate`** with **`OLLAMA_IMAGE_MODEL`** (separate from the chat model). The repo default is **`x/z-image-turbo`** ([Ollama image generation](https://ollama.com/blog/image-generation)).
+
+```bash
+ollama pull x/z-image-turbo
+```
+
+- **Alternative:** `ollama pull x/flux2-klein` then set `OLLAMA_IMAGE_MODEL=x/flux2-klein` in `backend/.env`.  
+- **Disk:** image checkpoints are large (several GB); plan headroom in addition to the text model.  
+- **Platform:** image support in Ollama was **macOS-first**; confirm your OS and Ollama version for Linux/Windows.  
+- **Full notes:** [IMAGE_GENERATION.md](./IMAGE_GENERATION.md) (including why **Qwen-Image-2512** is not a default `ollama pull` tag).
 
 ---
 
@@ -119,7 +134,7 @@ Install manually:
 
 1. **Python 3.11/3.12** from python.org — create `backend\.venv`, then `pip install -r backend\requirements.txt`.
 2. **Node** from nodejs.org — in `frontend`, `npm install`.
-3. **Ollama for Windows** from ollama.com — pull the model from PowerShell or cmd.
+3. **Ollama for Windows** from ollama.com — pull the **text** model and the **image** model (default **`x/z-image-turbo`**, same as `OLLAMA_IMAGE_MODEL` in `.env.example`) from PowerShell or cmd.
 4. Run Uvicorn and Vite in **two terminals** (paths differ from Unix).
 
 ---
@@ -137,14 +152,25 @@ Options (environment variables):
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
-| `INSTALL_MODEL` | `qwen2.5:14b` | Tag passed to `ollama pull`. |
+| `INSTALL_MODEL` | `qwen2.5:14b` | Text tag passed to first `ollama pull`. |
+| `INSTALL_IMAGE_MODEL` | `x/z-image-turbo` | Image tag passed to second `ollama pull` (Studio images). |
 | `SKIP_OLLAMA_INSTALL` | unset | If `1`, do not run the Ollama installer (only pull if Ollama exists). |
-| `SKIP_MODEL_PULL` | unset | If `1`, skip `ollama pull` (you already have the model). |
+| `SKIP_MODEL_PULL` | unset | If `1`, skip the **text** model `ollama pull`. |
+| `SKIP_IMAGE_MODEL_PULL` | unset | If `1`, skip the **image** model `ollama pull`. |
 
-Example:
+Examples:
 
 ```bash
 SKIP_OLLAMA_INSTALL=1 INSTALL_MODEL=qwen2.5:8b ./scripts/install-all.sh
+```
+
+```bash
+# Text model already present; still pull image model for Studio
+SKIP_MODEL_PULL=1 ./scripts/install-all.sh
+```
+
+```bash
+INSTALL_IMAGE_MODEL=x/flux2-klein ./scripts/install-all.sh
 ```
 
 Then start the app:
@@ -161,12 +187,18 @@ Open **`http://127.0.0.1:5173`**.
 ## 10. Verify installation
 
 ```bash
-# Ollama
+# Ollama — list local models (expect qwen2.5:14b and x/z-image-turbo or your overrides)
 curl -s http://127.0.0.1:11434/api/tags | head
 
 # API (with venv activated, from backend/)
 curl -s http://127.0.0.1:8000/api/health
+# Health JSON includes ollama_model and ollama_image_model — they should match pulled tags.
+
+# Optional — image pipeline only (truncated output)
+curl -s http://127.0.0.1:11434/api/generate -d '{"model":"x/z-image-turbo","prompt":"red apple","stream":false}' | head -c 300
 ```
+
+See [IMAGE_GENERATION.md](./IMAGE_GENERATION.md) if the image `curl` returns an error or no `image` field.
 
 ---
 
@@ -175,4 +207,5 @@ curl -s http://127.0.0.1:8000/api/health
 | Doc | Content |
 |-----|---------|
 | **[USER_GUIDE.md](./USER_GUIDE.md)** | Walkthrough aligned with the WebUI. |
+| **[IMAGE_GENERATION.md](./IMAGE_GENERATION.md)** | Image model env, `ollama pull`, smoke tests, deployment notes. |
 | **README.md** (repo root) | Quick overview, links, config table. |

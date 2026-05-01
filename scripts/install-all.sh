@@ -7,11 +7,14 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 INSTALL_MODEL="${INSTALL_MODEL:-qwen2.5:14b}"
+INSTALL_IMAGE_MODEL="${INSTALL_IMAGE_MODEL:-x/z-image-turbo}"
 SKIP_OLLAMA_INSTALL="${SKIP_OLLAMA_INSTALL:-0}"
 SKIP_MODEL_PULL="${SKIP_MODEL_PULL:-0}"
+SKIP_IMAGE_MODEL_PULL="${SKIP_IMAGE_MODEL_PULL:-0}"
 
 echo "==> GIGI-AI installer (repo: $ROOT)"
-echo "    Model: $INSTALL_MODEL"
+echo "    Text model:  $INSTALL_MODEL"
+echo "    Image model: $INSTALL_IMAGE_MODEL"
 echo ""
 
 need_cmd() {
@@ -61,10 +64,17 @@ echo "    Ollama: $(ollama --version 2>/dev/null || echo ok)"
 
 # --- Pull model ---
 if [ "$SKIP_MODEL_PULL" != "1" ]; then
-  echo "==> Pulling Ollama model '$INSTALL_MODEL' (large download)…"
+  echo "==> Pulling Ollama text model '$INSTALL_MODEL' (large download)…"
   ollama pull "$INSTALL_MODEL"
 else
-  echo "==> Skipping ollama pull (SKIP_MODEL_PULL=1)"
+  echo "==> Skipping text model ollama pull (SKIP_MODEL_PULL=1)"
+fi
+
+if [ "$SKIP_IMAGE_MODEL_PULL" != "1" ]; then
+  echo "==> Pulling Ollama image model '$INSTALL_IMAGE_MODEL' (Studio — large download)…"
+  ollama pull "$INSTALL_IMAGE_MODEL"
+else
+  echo "==> Skipping image model ollama pull (SKIP_IMAGE_MODEL_PULL=1)"
 fi
 
 # --- Python venv + pip ---
@@ -82,7 +92,7 @@ echo "==> npm install (frontend)…"
 # --- .env ---
 if [ ! -f "$ROOT/backend/.env" ]; then
   cp "$ROOT/backend/.env.example" "$ROOT/backend/.env"
-  echo "==> Created backend/.env from .env.example (edit OLLAMA_MODEL if needed)"
+  echo "==> Created backend/.env from .env.example (edit OLLAMA_MODEL / OLLAMA_IMAGE_MODEL if needed)"
 fi
 
 echo ""
