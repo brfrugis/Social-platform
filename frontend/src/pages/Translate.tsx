@@ -3,10 +3,19 @@ import { api } from '../lib/api'
 
 const SOURCE_LANGS = ['English', 'Spanish'] as const
 
+type TokenUsage = { prompt_eval_count: number | null; eval_count: number | null }
+
+function fmtCount(n: number | null | undefined): string {
+  if (n == null) return '—'
+  return n.toLocaleString()
+}
+
 export default function Translate() {
   const [translateIn, setTranslateIn] = useState('')
   const [sourceLanguage, setSourceLanguage] = useState<string>(SOURCE_LANGS[0])
   const [translated, setTranslated] = useState('')
+  const [usage, setUsage] = useState<TokenUsage | null>(null)
+  const [usageNotes, setUsageNotes] = useState('')
   const [translating, setTranslating] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -18,8 +27,14 @@ export default function Translate() {
     setTranslating(true)
     setError(null)
     setTranslated('')
+    setUsage(null)
+    setUsageNotes('')
     try {
-      const res = await api<{ translated: string }>('/api/translate', {
+      const res = await api<{
+        translated: string
+        usage: TokenUsage
+        usage_notes?: string
+      }>('/api/translate', {
         method: 'POST',
         body: JSON.stringify({
           text: translateIn,
@@ -28,6 +43,8 @@ export default function Translate() {
         }),
       })
       setTranslated(res.translated)
+      setUsage(res.usage ?? null)
+      setUsageNotes(res.usage_notes ?? '')
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -86,6 +103,30 @@ export default function Translate() {
           <h2 className="panel-title flush-top">Brazilian Portuguese</h2>
           {translated ? (
             <>
+              {usage && (
+                <div className="usage-panel compact-bottom">
+                  <div className="usage-panel-title">Token usage (this translation)</div>
+                  <div className="usage-grid">
+                    <div className="usage-metric">
+                      <span className="usage-label">Prompt tokens</span>
+                      <span className="usage-value">{fmtCount(usage.prompt_eval_count)}</span>
+                    </div>
+                    <div className="usage-metric">
+                      <span className="usage-label">Completion tokens</span>
+                      <span className="usage-value">{fmtCount(usage.eval_count)}</span>
+                    </div>
+                    <div className="usage-metric">
+                      <span className="usage-label">Total (reported)</span>
+                      <span className="usage-value">
+                        {usage.prompt_eval_count != null && usage.eval_count != null
+                          ? (usage.prompt_eval_count + usage.eval_count).toLocaleString()
+                          : '—'}
+                      </span>
+                    </div>
+                  </div>
+                  {usageNotes ? <p className="usage-note">{usageNotes}</p> : null}
+                </div>
+              )}
               <pre className="result-body flat">{translated}</pre>
               <div className="row actions">
                 <button

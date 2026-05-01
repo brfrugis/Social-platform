@@ -76,6 +76,14 @@ Ingest reusable **guardrail** packs under **Templates** in the UI (stored in **`
 
 **Translate** in the sidebar sends pasted text to the same local model with a pt-BR translation prompt. Source language is **English** or **Spanish**.
 
+## Token usage (monitoring)
+
+Ollama’s **`/api/chat`** responses include **`prompt_eval_count`** (input tokens evaluated) and **`eval_count`** (output tokens). GIGI-AI forwards these on **`POST /api/generate`** (per variant + **session totals**) and **`POST /api/translate`**, and the **Studio** / **Translate** screens show a short summary after each run.
+
+**Caveats:** Ollama may **omit** counts when prompts are **cached**, or in edge cases; totals then sum only what was returned. This is local inference—there is no cloud “billing meter”; use these numbers for **capacity planning** and **rough cost** if you compare to hosted API $/1K tokens.
+
+**Outside the app:** inspect the raw JSON with Swagger **`/docs`**, or call Ollama directly, e.g. `curl -s http://127.0.0.1:11434/api/chat -d '{"model":"qwen2.5:14b","messages":[{"role":"user","content":"hi"}],"stream":false}'` and read `prompt_eval_count` / `eval_count` on the final object.
+
 ## Production-style single server
 
 Build the frontend (`npm run build` in `frontend`), then run the API: if **`frontend/dist/index.html`** exists, the backend serves the SPA at `/` (API remains under `/api/...`).

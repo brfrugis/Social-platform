@@ -75,6 +75,13 @@ class GenerateRequest(BaseModel):
     temperature: float = Field(default=0.7, ge=0, le=2)
 
 
+class TokenUsage(BaseModel):
+    """Ollama-reported counts per request (see Ollama /api/chat docs). May be null if omitted (e.g. prompt cache)."""
+
+    prompt_eval_count: int | None = None
+    eval_count: int | None = None
+
+
 class GenerateResultItem(BaseModel):
     format_id: str
     tone_id: str
@@ -83,10 +90,16 @@ class GenerateResultItem(BaseModel):
     content: str
     template_ids: list[str] = Field(default_factory=list)
     template_names: list[str] = Field(default_factory=list)
+    usage: TokenUsage = Field(default_factory=TokenUsage)
 
 
 class GenerateResponse(BaseModel):
     results: list[GenerateResultItem]
+    session_totals: TokenUsage = Field(default_factory=TokenUsage)
+    usage_notes: str = Field(
+        default="",
+        description="Set when some counts were missing from Ollama (e.g. cached prompt)",
+    )
 
 
 @app.post("/api/generate", response_model=GenerateResponse)
@@ -105,6 +118,11 @@ async def generate(req: GenerateRequest):
     results: list[GenerateResultItem] = []
     tmpl_ids = [t.get("id", "") for t in active_templates]
     tmpl_names = [str(t.get("name") or t.get("id") or "") for t in active_templates]
+    usage_incomplete = False
+    sum_prompt = 0
+    sum_completion = 0
+    any_prompt_count = False
+    any_completion_count = False
 
     for item in req.items:
         fmt = formats.get(item.format_id)
@@ -126,19 +144,42 @@ async def generate(req: GenerateRequest):
             output_language=req.output_language,
             active_templates=active_templates,
         )
-        content = await chat_completion(messages, temperature=req.temperature)
+        chat = await chat_completion(messages, temperature=req.temperature)
+        u = chat.usage
+        pu, eu = u.prompt_eval_count, u.eval_count
+        if pu is None or eu is None:
+            usage_incomplete = True
+        if pu is not None:
+            sum_prompt += pu
+            any_prompt_count = True
+        if eu is not None:
+            sum_completion += eu
+            any_completion_count = True
         results.append(
             GenerateResultItem(
                 format_id=item.format_id,
                 tone_id=item.tone_id,
                 format_name=fmt.get("name", item.format_id),
                 tone_name=tone.get("name", item.tone_id),
-                content=content,
+                content=chat.content,
                 template_ids=list(tmpl_ids),
                 template_names=list(tmpl_names),
+                usage=TokenUsage(prompt_eval_count=pu, eval_count=eu),
             )
         )
-    return GenerateResponse(results=results)
+    return GenerateResponse(
+        results=results,
+        session_totals=TokenUsage(
+            prompt_eval_count=sum_prompt if any_prompt_count else None,
+            eval_count=sum_completion if any_completion_count else None,
+        ),
+        usage_notes=(
+            "Some prompt or completion counts were omitted by Ollama (common with prompt caching). "
+            "Totals sum only fields Ollama returned."
+            if usage_incomplete
+            else ""
+        ),
+    )
 
 
 class TemplatePayload(BaseModel):
@@ -184,13 +225,25 @@ class TranslateRequest(BaseModel):
 
 class TranslateResponse(BaseModel):
     translated: str
+    usage: TokenUsage = Field(default_factory=TokenUsage)
+    usage_notes: str = ""
 
 
 @app.post("/api/translate", response_model=TranslateResponse)
 async def translate(req: TranslateRequest):
     messages = build_translation_messages(text=req.text, source_language=req.source_language)
-    translated = await chat_completion(messages, temperature=req.temperature, num_predict=4096)
-    return TranslateResponse(translated=translated)
+    chat = await chat_completion(messages, temperature=req.temperature, num_predict=4096)
+    u = chat.usage
+    incomplete = u.prompt_eval_count is None or u.eval_count is None
+    return TranslateResponse(
+        translated=chat.content,
+        usage=TokenUsage(prompt_eval_count=u.prompt_eval_count, eval_count=u.eval_count),
+        usage_notes=(
+            "Ollama omitted a count (e.g. prompt cache). See Ollama API docs for prompt_eval_count / eval_count."
+            if incomplete
+            else ""
+        ),
+    )
 
 
 # Serve production build only when index.html exists (empty dist/ would otherwise 404 on /)

@@ -21,9 +21,30 @@ type GenResult = {
   content: string
   template_ids?: string[]
   template_names?: string[]
+  usage?: TokenUsage
 }
 
 const OUTPUT_LANGS = ['Portuguese (Brazil)', 'English', 'Spanish'] as const
+
+type TokenUsage = {
+  prompt_eval_count: number | null
+  eval_count: number | null
+}
+
+function fmtCount(n: number | null | undefined): string {
+  if (n == null) return '—'
+  return n.toLocaleString()
+}
+
+function fmtTotal(u: TokenUsage): string {
+  if (u.prompt_eval_count == null && u.eval_count == null) return '—'
+  const a = u.prompt_eval_count ?? 0
+  const b = u.eval_count ?? 0
+  if (u.prompt_eval_count == null || u.eval_count == null) {
+    return (a + b).toLocaleString() + ' (partial)'
+  }
+  return (a + b).toLocaleString()
+}
 
 export default function Studio() {
   const [presets, setPresets] = useState<Presets>({ formats: [], tones: [] })
@@ -35,6 +56,10 @@ export default function Studio() {
   const [selectedPairs, setSelectedPairs] = useState<Record<string, boolean>>({})
   const [generating, setGenerating] = useState(false)
   const [results, setResults] = useState<GenResult[]>([])
+  const [usageSummary, setUsageSummary] = useState<{
+    session_totals: TokenUsage
+    usage_notes: string
+  } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const variantCount = useMemo(
@@ -94,8 +119,13 @@ export default function Studio() {
     setGenerating(true)
     setError(null)
     setResults([])
+    setUsageSummary(null)
     try {
-      const res = await api<{ results: GenResult[] }>('/api/generate', {
+      const res = await api<{
+        results: GenResult[]
+        session_totals: TokenUsage
+        usage_notes?: string
+      }>('/api/generate', {
         method: 'POST',
         body: JSON.stringify({
           brief,
@@ -106,6 +136,10 @@ export default function Studio() {
         }),
       })
       setResults(res.results)
+      setUsageSummary({
+        session_totals: res.session_totals,
+        usage_notes: res.usage_notes ?? '',
+      })
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -344,33 +378,77 @@ export default function Studio() {
             </span>
           </div>
         ) : (
-          <ul className="results">
-            {results.map((r, i) => (
-              <li key={`${r.format_id}-${r.tone_id}-${i}`} className="result-block">
-                <div className="result-head">
-                  <strong>{r.format_name}</strong>
-                  <span className="sep">·</span>
-                  <span>{r.tone_name}</span>
-                  {r.template_names && r.template_names.length > 0 && (
-                    <>
-                      <span className="sep">·</span>
-                      <span className="tpl-inline">
-                        Guardrails: {r.template_names.join(', ')}
-                      </span>
-                    </>
-                  )}
-                  <button
-                    type="button"
-                    className="btn secondary small"
-                    onClick={() => void navigator.clipboard.writeText(r.content)}
-                  >
-                    Copy
-                  </button>
+          <>
+            {usageSummary && (
+              <div className="usage-panel" role="status">
+                <div className="usage-panel-title">Token usage (this run)</div>
+                <div className="usage-grid">
+                  <div className="usage-metric">
+                    <span className="usage-label">Prompt tokens</span>
+                    <span className="usage-value">
+                      {fmtCount(usageSummary.session_totals.prompt_eval_count)}
+                    </span>
+                  </div>
+                  <div className="usage-metric">
+                    <span className="usage-label">Completion tokens</span>
+                    <span className="usage-value">
+                      {fmtCount(usageSummary.session_totals.eval_count)}
+                    </span>
+                  </div>
+                  <div className="usage-metric">
+                    <span className="usage-label">Total (reported)</span>
+                    <span className="usage-value">
+                      {fmtTotal(usageSummary.session_totals)}
+                    </span>
+                  </div>
                 </div>
-                <pre className="result-body">{r.content}</pre>
-              </li>
-            ))}
-          </ul>
+                {usageSummary.usage_notes ? (
+                  <p className="usage-note">{usageSummary.usage_notes}</p>
+                ) : null}
+                <p className="usage-hint muted small">
+                  Counts come from Ollama (<code>prompt_eval_count</code>, <code>eval_count</code>).
+                  They can be missing when the prompt is cached. For raw JSON, call the API from
+                  your terminal or use <code>/docs</code>.
+                </p>
+              </div>
+            )}
+            <ul className="results">
+              {results.map((r, i) => (
+                <li key={`${r.format_id}-${r.tone_id}-${i}`} className="result-block">
+                  <div className="result-head">
+                    <strong>{r.format_name}</strong>
+                    <span className="sep">·</span>
+                    <span>{r.tone_name}</span>
+                    {r.usage && (
+                      <>
+                        <span className="sep">·</span>
+                        <span className="usage-chip" title="Ollama-reported tokens for this call">
+                          in {fmtCount(r.usage.prompt_eval_count)} · out{' '}
+                          {fmtCount(r.usage.eval_count)}
+                        </span>
+                      </>
+                    )}
+                    {r.template_names && r.template_names.length > 0 && (
+                      <>
+                        <span className="sep">·</span>
+                        <span className="tpl-inline">
+                          Guardrails: {r.template_names.join(', ')}
+                        </span>
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      className="btn secondary small"
+                      onClick={() => void navigator.clipboard.writeText(r.content)}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <pre className="result-body">{r.content}</pre>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </section>
     </div>
