@@ -11,6 +11,177 @@
 | **[docs/README.md](docs/README.md)** | Index of the `docs/` folder. |
 | **[docs/LOCAL_POSTGRES.md](docs/LOCAL_POSTGRES.md)** | Optional **PostgreSQL** for Phase 4 (customers + social connections): Docker, Alembic, `/api/tenants/*`. |
 | **[docs/INTEGRATIONS_PLATFORMS.md](docs/INTEGRATIONS_PLATFORMS.md)** | **Integrations contract** — platform-specific IDs (LinkedIn URNs, Meta Graph IDs, X user ids) and vendor doc links. |
+| **This README (below)** | **Architecture, data flows, and user journeys** — Mermaid diagrams for system context, Studio, Translate, tenant API, and persistence. |
+
+## Architecture, data flows, and user journeys
+
+This section is the **map of the product**: who touches what, where data lives, and how requests move through the stack. Diagrams use [Mermaid](https://mermaid.js.org/) (GitHub renders them in the README; other viewers may need a Mermaid-capable preview).
+
+### System context
+
+High-level components: the **browser** runs the React app; in development, **Vite** proxies `/api` to **FastAPI**. Inference hits **Ollama**; tenant data hits **PostgreSQL** when configured; **formats, tones, and templates** are JSON files on disk unless you only read them through the API.
+
+```mermaid
+flowchart TB
+  subgraph browser["Browser"]
+    SPA["React SPA: Studio, Translate, Templates, Workspace, Integrations, Library"]
+    CTX["Context: TranslationStudioBridge, Workspace"]
+    LS["localStorage: principal, active customer, studio history"]
+  end
+  subgraph vite["Vite dev :5173"]
+    PROXY["HTTP proxy: /api to backend"]
+  end
+  subgraph api["FastAPI :8000"]
+    CORE["/api/health, presets, templates, generate, translate"]
+    TEN["/api/tenants/* + X-Principal-Id"]
+    FILES["Read/write data/presets.json, data/templates.json"]
+  end
+  subgraph external["Local services"]
+    OLL["Ollama :11434"]
+    PG["PostgreSQL optional"]
+  end
+  SPA --> PROXY
+  SPA --> LS
+  SPA --> CTX
+  PROXY --> CORE
+  PROXY --> TEN
+  CORE --> OLL
+  CORE --> FILES
+  TEN --> PG
+```
+
+**Production-style run:** build the frontend so `frontend/dist/` exists; FastAPI can serve the SPA at `/` while still exposing `/api/*` (see [Production-style single server](#production-style-single-server)).
+
+### User journeys (navigation and intent)
+
+How the **sidebar areas** relate: content authors usually tune **Library** (formats/tones) and **Templates**, then work in **Studio**. **Translate** can feed **Studio** via the export bridge. **Workspace** picks the tenant customer; **Integrations** registers social accounts for that customer (used for publish shortcuts in Studio today; API publish is future work).
+
+```mermaid
+flowchart TB
+  subgraph setup["Setup and configuration"]
+    LIB["Library: formats and tones JSON"]
+    TPL["Templates: guardrails JSON"]
+    WS["Workspace: principal ID, active customer"]
+    INT["Integrations: per-customer social connections"]
+  end
+  subgraph create["Content creation"]
+    TR["Translate EN or ES to pt-BR"]
+    ST["Studio: guardrails, brief, matrix, Generate"]
+    OUT["Output: token usage, variants, Publish, History"]
+  end
+  LIB --> ST
+  TPL --> ST
+  WS --> INT
+  INT --> OUT
+  TR -->|"Export to Studio in-memory queue"| ST
+  ST --> OUT
+```
+
+### Studio generation data flow
+
+Each **Generate** call sends the brief, selected format/tone pairs, template IDs, output language, and temperature. The backend resolves presets and templates, builds chat messages, calls Ollama once per variant, aggregates token counts, and returns all blocks. The UI persists a snapshot to **generation history** in `localStorage` (scoped by active customer id when set).
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant R as React Studio
+  participant A as FastAPI
+  participant P as presets.json
+  participant T as templates.json
+  participant O as Ollama
+  participant L as localStorage
+  U->>R: Select templates, brief, pairs, Generate
+  R->>A: POST /api/generate JSON
+  A->>P: Load formats and tones
+  A->>T: Load templates by ID
+  A->>O: POST /api/chat per variant
+  O-->>A: content plus token fields
+  A-->>R: results plus session_totals
+  R->>L: Append studio history run
+  R-->>U: Output plus Publish bar
+```
+
+### Translate to Studio bridge (no server round-trip)
+
+The bridge is **client-only React state**: exporting from Translate does not call the API; it queues text and switches to Studio. **Bring from translation** pastes into the brief and clears the queue.
+
+```mermaid
+stateDiagram-v2
+  direction LR
+  [*] --> EmptyQueue
+  EmptyQueue --> Queued: Export to Studio sets pending text
+  Queued --> EmptyQueue: Bring from translation consumes
+  Queued --> EmptyQueue: Discard clears pending
+```
+
+```mermaid
+flowchart LR
+  TR["Translate tab"]
+  Q["pending string in TranslationStudioBridgeProvider"]
+  ST["Studio tab Brief"]
+  TR -->|"exportTranslationToStudio"| Q
+  Q -->|"consumePendingTranslationForBrief"| ST
+```
+
+### Translation inference data flow
+
+**Translate** uses the same Ollama stack as Studio, but a dedicated prompt and **`POST /api/translate`**. Export to Studio is **not** shown here—that path stays in the browser (see above).
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant R as React Translate
+  participant A as FastAPI
+  participant O as Ollama
+  U->>R: Paste source, choose EN or ES, run translate
+  R->>A: POST /api/translate JSON
+  A->>O: POST /api/chat translation messages
+  O-->>A: pt-BR text plus token fields
+  A-->>R: translated text plus usage
+  R-->>U: Output, Copy, optional Export to Studio client-side
+```
+
+### Tenant API and integrations data flow
+
+Workspace stores **principal** and **active customer** in `localStorage`. Calls to `/api/tenants/...` send header **`X-Principal-Id`**. The backend checks membership, reads/writes **PostgreSQL** (customers, members, social connections). Studio loads connections for the same customer to render **Publish** (copy + open composer); server-side posting to networks is not implemented yet.
+
+```mermaid
+sequenceDiagram
+  participant R as React Workspace or Studio
+  participant A as FastAPI tenants
+  participant DB as PostgreSQL
+  R->>A: GET .../customers or .../connections
+  Note over R,A: Header X-Principal-Id
+  A->>DB: SQL via SQLAlchemy async
+  DB-->>A: rows
+  A-->>R: JSON masked tokens as booleans
+```
+
+```mermaid
+flowchart LR
+  subgraph persist["What persists where"]
+    J1["data/presets.json"]
+    J2["data/templates.json"]
+    DB["Postgres: customers, members, connections"]
+    LS2["localStorage: principal, customer, studio history"]
+  end
+  subgraph volatile["Session or ephemeral"]
+    BR["Translation export queue React state"]
+  end
+```
+
+### End-to-end checklist (mental model)
+
+| Layer | Responsibility |
+|-------|----------------|
+| **React** | Navigation, forms, bridge context, `localStorage` for workspace + history, `tenantApi` header injection |
+| **Vite proxy** | Same-origin `/api` during dev |
+| **FastAPI** | REST, preset/template CRUD, generation and translate orchestration, tenant CRUD when `DATABASE_URL` is set |
+| **Ollama** | Local LLM inference |
+| **PostgreSQL** | Optional multi-tenant metadata and integration rows |
+| **JSON files** | Authoring surface for presets and templates (also editable in UI where implemented) |
+
+For step-by-step product copy aligned with the UI, see **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)**. For install commands, see **[docs/INSTALLATION.md](docs/INSTALLATION.md)**.
 
 **One-command setup (macOS / Linux):** after cloning, run **`./scripts/install-all.sh`** (installs Ollama if missing, pulls the default model, creates `backend/.venv`, runs `npm install`, copies `.env`). See [docs/INSTALLATION.md](docs/INSTALLATION.md) for options and Windows notes.
 
