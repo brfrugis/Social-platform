@@ -1,4 +1,8 @@
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Matches docker-compose.yml — works locally without editing .env once Postgres is up.
+DEFAULT_DATABASE_URL = "postgresql+asyncpg://gigi:gigi@127.0.0.1:5432/gigi"
 
 
 class Settings(BaseSettings):
@@ -9,6 +13,17 @@ class Settings(BaseSettings):
     presets_path: str = "../data/presets.json"
     templates_path: str = "../data/templates.json"
     request_timeout_s: float = 600.0
+    database_url: str | None = Field(
+        default=DEFAULT_DATABASE_URL,
+        description="Postgres for Phase 4 tenant API. Set DATABASE_URL to empty string to disable.",
+    )
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def database_url_blank_disabled(cls, v: object) -> object:
+        if v == "":
+            return None
+        return v
 
 
 settings = Settings()

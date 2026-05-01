@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useWorkspace } from '../context/WorkspaceContext'
 import { api } from '../lib/api'
 
 type Format = { id: string; name: string; description: string; sample?: string }
@@ -47,6 +48,12 @@ function fmtTotal(u: TokenUsage): string {
 }
 
 export default function Studio() {
+  const { tenantsOk, activeCustomerId, customers } = useWorkspace()
+  const activeWorkspaceName =
+    tenantsOk === true && activeCustomerId
+      ? customers.find((c) => c.id === activeCustomerId)?.name
+      : null
+
   const [presets, setPresets] = useState<Presets>({ formats: [], tones: [] })
   const [templates, setTemplates] = useState<GuardTemplate[]>([])
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<Record<string, boolean>>({})
@@ -154,6 +161,13 @@ export default function Studio() {
       {error && (
         <div className="banner error" role="alert">
           {error}
+        </div>
+      )}
+
+      {activeWorkspaceName && (
+        <div className="banner soft" role="status">
+          Active workspace: <strong>{activeWorkspaceName}</strong>. Generation still uses local presets; publishing and
+          tenant-scoped flows will use this customer later.
         </div>
       )}
 

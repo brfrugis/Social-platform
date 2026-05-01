@@ -45,6 +45,21 @@ export default function NavIcon({ id }: { id: NavId }) {
           <path d="M7.5 7.5h5M7.5 10h5M7.5 12.5h3" opacity="0.5" />
         </svg>
       )
+    case 'workspace':
+      return (
+        <svg {...svgProps} aria-hidden>
+          <path d="M4 9.5l6-4 6 4v6.5a1 1 0 01-1 1h-3v-4H8v4H5a1 1 0 01-1-1V9.5z" />
+          <path d="M9 17v-4h2v4" opacity="0.45" />
+        </svg>
+      )
+    case 'integrations':
+      return (
+        <svg {...svgProps} aria-hidden>
+          <circle cx="7" cy="7" r="2.25" />
+          <circle cx="14.5" cy="13.5" r="2.25" />
+          <path d="M9 8.5l5 4M11 11.5l4-4" opacity="0.55" />
+        </svg>
+      )
     default:
       return null
   }

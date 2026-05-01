@@ -4,8 +4,11 @@ import NavIcon from './components/NavIcon'
 import Studio from './pages/Studio'
 import Translate from './pages/Translate'
 import Templates from './pages/Templates'
+import Workspace from './pages/Workspace'
+import Integrations from './pages/Integrations'
 import Library from './pages/Library'
 import { NAV, type NavId } from './navConfig'
+import { WorkspaceProvider, useWorkspace } from './context/WorkspaceContext'
 import './App.css'
 
 function modelFromHealth(health: string): string {
@@ -14,9 +17,21 @@ function modelFromHealth(health: string): string {
 }
 
 export default function App() {
+  return (
+    <WorkspaceProvider>
+      <AppShell />
+    </WorkspaceProvider>
+  )
+}
+
+function AppShell() {
+  const { tenantsOk, activeCustomerId, customers } = useWorkspace()
   const [nav, setNav] = useState<NavId>('studio')
   const [health, setHealth] = useState<string>('')
   const [banner, setBanner] = useState<string | null>(null)
+
+  const activeCustomerName =
+    activeCustomerId && customers.find((c) => c.id === activeCustomerId)?.name
 
   const loadHealth = useCallback(async () => {
     try {
@@ -82,6 +97,19 @@ export default function App() {
             <p className="shell-page-sub">{current?.hint}</p>
           </div>
           <div className="topbar-actions">
+            {tenantsOk === true && activeCustomerName && (
+              <span className="workspace-pill" title="Active Phase 4 customer (Workspace)">
+                {activeCustomerName}
+              </span>
+            )}
+            {tenantsOk === false && (
+              <span
+                className="workspace-pill workspace-pill-muted"
+                title="Set DATABASE_URL and run Postgres + migrations"
+              >
+                Tenant DB offline
+              </span>
+            )}
             {health ? (
               <span className="status-pill" title={health}>
                 <span className="status-dot" aria-hidden />
@@ -112,6 +140,8 @@ export default function App() {
           {nav === 'studio' && <Studio />}
           {nav === 'translate' && <Translate />}
           {nav === 'templates' && <Templates />}
+          {nav === 'workspace' && <Workspace />}
+          {nav === 'integrations' && <Integrations />}
           {nav === 'library' && <Library />}
         </main>
 

@@ -32,9 +32,15 @@ This guide follows the **same structure and labels** as the app so you can read 
 | **Studio** | End‑to‑end **generate** workflow: guardrails → brief → formats/tones → output. |
 | **Translate** | **English or Spanish → Brazilian Portuguese** in one shot. |
 | **Templates** | **Create, edit, delete** guardrail packs used in Studio. |
+| **Workspace** | Phase 4 **tenant**: set **Principal ID** (`X-Principal-Id`), create/select **customers**, optional slug. Requires Postgres + **`DATABASE_URL`** (see [LOCAL_POSTGRES.md](./LOCAL_POSTGRES.md)). |
+| **Integrations** | Per **active customer**: add/edit/remove **social connections** (LinkedIn, X, Instagram, Facebook, other). Same DB requirement as Workspace. |
 | **Formats and tones** | **JSON editor** for `data/presets.json` (channels and voice presets). |
 
 Footer line: short reminder of ports and **`backend/.env`**.
+
+**Top bar:** when the tenant API is up and a customer is selected, its **name** appears as a pill next to the model status. If the DB is offline, a muted **Tenant DB offline** pill shows instead.
+
+Studio shows a soft banner naming the **active workspace** when set (generation still uses local presets until tenant‑scoped flows are wired).
 
 ---
 

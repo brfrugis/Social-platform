@@ -9,6 +9,7 @@
 | **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** | **Frontend / product walkthrough** — same order and wording as the live UI (sidebar, Studio steps, Translate, Templates, Library, tokens, troubleshooting). |
 | **[docs/INSTALLATION.md](docs/INSTALLATION.md)** | **Full installation guide** — OS, Git, Ollama, model, Python packages, Node/npm packages, fonts, scripts, verification. |
 | **[docs/README.md](docs/README.md)** | Index of the `docs/` folder. |
+| **[docs/LOCAL_POSTGRES.md](docs/LOCAL_POSTGRES.md)** | Optional **PostgreSQL** for Phase 4 (customers + social connections): Docker, Alembic, `/api/tenants/*`. |
 
 **One-command setup (macOS / Linux):** after cloning, run **`./scripts/install-all.sh`** (installs Ollama if missing, pulls the default model, creates `backend/.venv`, runs `npm install`, copies `.env`). See [docs/INSTALLATION.md](docs/INSTALLATION.md) for options and Windows notes.
 

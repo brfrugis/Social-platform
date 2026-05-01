@@ -1,0 +1,7 @@
+Run from repository `backend/` directory:
+
+  source .venv/bin/activate
+  export DATABASE_URL=postgresql+asyncpg://gigi:gigi@127.0.0.1:5432/gigi
+  alembic upgrade head
+
+Migrations use a sync driver (psycopg); DATABASE_URL may use +asyncpg — env.py rewrites it for Alembic.

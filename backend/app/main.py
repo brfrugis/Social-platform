@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -9,10 +10,21 @@ from pydantic import BaseModel, Field
 from .ollama import chat_completion
 from .presets import load_presets, save_presets
 from .prompts import build_generation_messages, build_translation_messages
+from .db.session import close_engine, init_engine
 from .settings import settings
 from . import templates_store
+from .routers import tenants as tenants_router
 
-app = FastAPI(title="GIGI-AI API")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    init_engine()
+    yield
+    await close_engine()
+
+
+app = FastAPI(title="GIGI-AI API", lifespan=lifespan)
+app.include_router(tenants_router.router)
 
 app.add_middleware(
     CORSMiddleware,

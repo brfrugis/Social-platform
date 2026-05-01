@@ -1,0 +1,23 @@
+# Local PostgreSQL for Phase 4 tenant schema (customers + social connections).
+# Usage: docker compose up -d
+# Then: cd backend && source .venv/bin/activate && alembic upgrade head
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: gigi
+      POSTGRES_PASSWORD: gigi
+      POSTGRES_DB: gigi
+    ports:
+      - "5432:5432"
+    volumes:
+      - gigi_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gigi -d gigi"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  gigi_pg_data:
