@@ -72,6 +72,12 @@ type VariantImageState = {
   loadingImage: boolean
   error: string | null
   approved: boolean
+  /** Tokens from last POST /api/studio/image-prompt (text model). */
+  lastPromptUsage: TokenUsage | null
+  lastPromptNotes: string
+  /** Tokens from last POST /api/studio/generate-image (image model). */
+  lastImageUsage: TokenUsage | null
+  lastImageNotes: string
 }
 
 function emptyVariantImage(): VariantImageState {
@@ -82,7 +88,16 @@ function emptyVariantImage(): VariantImageState {
     loadingImage: false,
     error: null,
     approved: false,
+    lastPromptUsage: null,
+    lastPromptNotes: '',
+    lastImageUsage: null,
+    lastImageNotes: '',
   }
+}
+
+function usageLine(u: TokenUsage | null): string {
+  if (!u) return '—'
+  return `in ${fmtCount(u.prompt_eval_count)} · out ${fmtCount(u.eval_count)}`
 }
 
 function VariantImagePanel({
@@ -132,6 +147,10 @@ function VariantImagePanel({
               imageDataUrl: null,
               approved: false,
               error: null,
+              lastPromptUsage: null,
+              lastPromptNotes: '',
+              lastImageUsage: null,
+              lastImageNotes: '',
             })
           }
         >
@@ -173,6 +192,18 @@ function VariantImagePanel({
           {v.error}
         </div>
       ) : null}
+      {(v.lastPromptUsage || v.lastPromptNotes) && (
+        <div className="variant-image-usage muted small" role="status">
+          <strong>Image prompt call</strong> — tokens: {usageLine(v.lastPromptUsage)}
+          {v.lastPromptNotes ? <span className="usage-inline-note"> · {v.lastPromptNotes}</span> : null}
+        </div>
+      )}
+      {(v.lastImageUsage || v.lastImageNotes) && (
+        <div className="variant-image-usage muted small" role="status">
+          <strong>Image generate</strong> — tokens: {usageLine(v.lastImageUsage)}
+          {v.lastImageNotes ? <span className="usage-inline-note"> · {v.lastImageNotes}</span> : null}
+        </div>
+      )}
       {v.imageDataUrl ? (
         <figure className="variant-image-figure">
           <img src={v.imageDataUrl} alt="Generated from approved prompt" className="variant-image-preview" />
@@ -284,6 +315,12 @@ export default function Studio() {
   const [publishConnections, setPublishConnections] = useState<PublishConnection[]>([])
   const [ollamaImageModel, setOllamaImageModel] = useState('')
   const [variantImages, setVariantImages] = useState<Record<number, VariantImageState>>({})
+  /** Sum of Ollama-reported tokens for image-prompt + image-generate calls since last main Generate. */
+  const [imageToolsSession, setImageToolsSession] = useState({
+    prompt: 0,
+    completion: 0,
+    hasPartial: false,
+  })
 
   const variantCount = useMemo(
     () => Object.values(selectedPairs).filter(Boolean).length,
@@ -394,13 +431,28 @@ export default function Studio() {
     }))
   }, [])
 
+  const bumpImageToolsSession = useCallback((u: TokenUsage | undefined | null) => {
+    if (!u) return
+    const p = u.prompt_eval_count
+    const c = u.eval_count
+    setImageToolsSession((s) => ({
+      prompt: s.prompt + (p ?? 0),
+      completion: s.completion + (c ?? 0),
+      hasPartial: s.hasPartial || p == null || c == null,
+    }))
+  }, [])
+
   const suggestImagePrompt = useCallback(
     async (index: number) => {
       const r = results[index]
       if (!r) return
       patchVariantImage(index, { loadingPrompt: true, error: null })
       try {
-        const res = await api<{ image_prompt: string }>('/api/studio/image-prompt', {
+        const res = await api<{
+          image_prompt: string
+          usage?: TokenUsage
+          usage_notes?: string
+        }>('/api/studio/image-prompt', {
           method: 'POST',
           headers: principalHeaders(principalId),
           body: JSON.stringify({
@@ -412,11 +464,15 @@ export default function Studio() {
             ...(tenantsOk === true && activeCustomerId ? { customer_id: activeCustomerId } : {}),
           }),
         })
+        const u = res.usage ?? { prompt_eval_count: null, eval_count: null }
+        bumpImageToolsSession(u)
         patchVariantImage(index, {
           promptDraft: res.image_prompt,
           loadingPrompt: false,
           approved: false,
           imageDataUrl: null,
+          lastPromptUsage: u,
+          lastPromptNotes: res.usage_notes ?? '',
         })
       } catch (e) {
         patchVariantImage(index, {
@@ -425,7 +481,15 @@ export default function Studio() {
         })
       }
     },
-    [results, outputLanguage, patchVariantImage, principalId, tenantsOk, activeCustomerId],
+    [
+      results,
+      outputLanguage,
+      patchVariantImage,
+      principalId,
+      tenantsOk,
+      activeCustomerId,
+      bumpImageToolsSession,
+    ],
   )
 
   const generateVariantImage = useCallback(
@@ -434,7 +498,12 @@ export default function Studio() {
       if (!p) return
       patchVariantImage(index, { loadingImage: true, error: null })
       try {
-        const res = await api<{ image_base64: string; mime_type?: string }>('/api/studio/generate-image', {
+        const res = await api<{
+          image_base64: string
+          mime_type?: string
+          usage?: TokenUsage
+          usage_notes?: string
+        }>('/api/studio/generate-image', {
           method: 'POST',
           headers: principalHeaders(principalId),
           body: JSON.stringify({
@@ -443,9 +512,13 @@ export default function Studio() {
           }),
         })
         const mime = res.mime_type?.trim() || 'image/png'
+        const u = res.usage ?? { prompt_eval_count: null, eval_count: null }
+        bumpImageToolsSession(u)
         patchVariantImage(index, {
           imageDataUrl: `data:${mime};base64,${res.image_base64}`,
           loadingImage: false,
+          lastImageUsage: u,
+          lastImageNotes: res.usage_notes ?? '',
         })
       } catch (e) {
         patchVariantImage(index, {
@@ -454,7 +527,7 @@ export default function Studio() {
         })
       }
     },
-    [patchVariantImage, principalId, tenantsOk, activeCustomerId],
+    [patchVariantImage, principalId, tenantsOk, activeCustomerId, bumpImageToolsSession],
   )
 
   const toggleTemplate = (id: string) => {
@@ -497,6 +570,7 @@ export default function Studio() {
     setResults([])
     setUsageSummary(null)
     setVariantImages({})
+    setImageToolsSession({ prompt: 0, completion: 0, hasPartial: false })
     try {
       const res = await api<{
         results: GenResult[]
@@ -562,6 +636,7 @@ export default function Studio() {
     setResults(run.results as GenResult[])
     setUsageSummary(run.usageSummary)
     setVariantImages({})
+    setImageToolsSession({ prompt: 0, completion: 0, hasPartial: false })
     setError(null)
   }, [])
 
@@ -897,6 +972,34 @@ export default function Studio() {
                   Counts come from Ollama (<code>prompt_eval_count</code>, <code>eval_count</code>).
                   They can be missing when the prompt is cached. For raw JSON, call the API from
                   your terminal or use <code>/docs</code>.
+                </p>
+              </div>
+            )}
+            {(imageToolsSession.prompt > 0 ||
+              imageToolsSession.completion > 0 ||
+              imageToolsSession.hasPartial) && (
+              <div className="usage-panel usage-panel-compact" role="status">
+                <div className="usage-panel-title">Token usage (image tools, this batch)</div>
+                <div className="usage-grid">
+                  <div className="usage-metric">
+                    <span className="usage-label">Prompt (sum)</span>
+                    <span className="usage-value">{fmtCount(imageToolsSession.prompt)}</span>
+                  </div>
+                  <div className="usage-metric">
+                    <span className="usage-label">Completion (sum)</span>
+                    <span className="usage-value">{fmtCount(imageToolsSession.completion)}</span>
+                  </div>
+                  <div className="usage-metric">
+                    <span className="usage-label">Total (sum)</span>
+                    <span className="usage-value">
+                      {(imageToolsSession.prompt + imageToolsSession.completion).toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+                <p className="usage-hint muted small" style={{ marginBottom: 0 }}>
+                  Includes every <strong>Suggest image prompt</strong> (text model) and <strong>Generate image</strong>{' '}
+                  (<code>/api/generate</code>) since the last main <strong>Generate</strong>. Some image builds omit
+                  counts — per-variant lines still show notes when Ollama returns them.
                 </p>
               </div>
             )}

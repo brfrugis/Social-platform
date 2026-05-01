@@ -37,6 +37,17 @@ def _parse_usage(data: dict[str, Any]) -> OllamaUsage:
     )
 
 
+def _parse_usage_merged(data: dict[str, Any]) -> OllamaUsage:
+    """Merge top-level and nested `usage` objects (Ollama /api/chat and /api/generate may differ by version)."""
+    merged: dict[str, Any] = dict(data)
+    nested = data.get("usage")
+    if isinstance(nested, dict):
+        for key, val in nested.items():
+            if val is not None and merged.get(key) is None:
+                merged[key] = val
+    return _parse_usage(merged)
+
+
 async def chat_completion(
     messages: list[dict[str, str]],
     *,
@@ -63,7 +74,7 @@ async def chat_completion(
         content = msg.get("content")
         if not content:
             raise RuntimeError(f"Unexpected Ollama response: {data!r}")
-        return ChatResult(content=content.strip(), usage=_parse_usage(data))
+        return ChatResult(content=content.strip(), usage=_parse_usage_merged(data))
 
 
 @dataclass(frozen=True)
@@ -104,4 +115,4 @@ async def generate_image_t2i(
             "Ollama returned no image field. Is this an image-generation model? "
             f"model={tag!r} response_keys={sorted(data.keys())!r}"
         )
-    return ImageGenResult(image_base64=b64.strip(), usage=_parse_usage(data))
+    return ImageGenResult(image_base64=b64.strip(), usage=_parse_usage_merged(data))

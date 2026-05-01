@@ -354,6 +354,7 @@ class StudioGenerateImageResponse(BaseModel):
     image_base64: str
     mime_type: str = "image/png"
     usage: TokenUsage = Field(default_factory=TokenUsage)
+    usage_notes: str = ""
 
 
 @app.post("/api/studio/generate-image", response_model=StudioGenerateImageResponse)
@@ -368,10 +369,16 @@ async def studio_generate_image(body: StudioGenerateImageRequest, principal: Pri
     except httpx.RequestError as e:
         raise HTTPException(status_code=502, detail=f"Cannot reach Ollama: {e}") from e
     u = out.usage
+    incomplete = u.prompt_eval_count is None or u.eval_count is None
     resp = StudioGenerateImageResponse(
         image_base64=out.image_base64,
         mime_type="image/png",
         usage=TokenUsage(prompt_eval_count=u.prompt_eval_count, eval_count=u.eval_count),
+        usage_notes=(
+            "Ollama did not return prompt_eval_count / eval_count for this image run (some image builds omit them)."
+            if incomplete
+            else ""
+        ),
     )
     await try_record_workspace_tokens(
         principal_id=principal,
