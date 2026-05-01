@@ -882,6 +882,53 @@
   line-height: 1.45;
 }
 
+.variant-image-panel {
+  margin-top: 0.75rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.variant-image-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.check-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin-top: 0.45rem;
+  font-size: 0.82rem;
+  color: var(--text-h);
+  cursor: pointer;
+}
+
+.check-row input {
+  margin-top: 0.15rem;
+}
+
+.variant-image-figure {
+  margin: 0.65rem 0 0;
+  padding: 0;
+}
+
+.variant-image-preview {
+  display: block;
+  max-width: min(100%, 28rem);
+  height: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+}
+
+.variant-image-figure figcaption {
+  margin-top: 0.35rem;
+}
+
 .studio-history-section {
   margin-top: 0.25rem;
 }
@@ -1248,6 +1295,39 @@
 .workspace-customer-slug {
   font-size: 0.75rem;
   color: var(--text-muted);
+}
+
+.workspace-usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  margin-top: 0.35rem;
+}
+
+.workspace-usage-table th,
+.workspace-usage-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 0.45rem 0.5rem;
+  text-align: left;
+}
+
+.workspace-usage-table th {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .integration-form-grid {

@@ -10,6 +10,13 @@ class Settings(BaseSettings):
 
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5:14b"
+    ollama_image_model: str = Field(
+        default="x/z-image-turbo",
+        description=(
+            "Ollama /api/generate image model (see docs/IMAGE_GENERATION.md). "
+            "Qwen-Image-2512 is not an official Ollama library tag — use HF/diffusers or pick an Ollama image model."
+        ),
+    )
     presets_path: str = "../data/presets.json"
     templates_path: str = "../data/templates.json"
     request_timeout_s: float = 600.0

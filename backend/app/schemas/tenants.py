@@ -184,3 +184,17 @@ class MemberOut(BaseModel):
 class CustomerBootstrapOut(BaseModel):
     customer: CustomerOut
     membership: MemberOut
+
+
+class TokenUsageBucketOut(BaseModel):
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+
+class WorkspaceTokenUsageOut(BaseModel):
+    window: str
+    since: datetime
+    until: datetime
+    totals: TokenUsageBucketOut
+    by_operation: dict[str, TokenUsageBucketOut]
+    event_count: int

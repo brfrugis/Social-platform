@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslationStudioBridge } from '../context/TranslationStudioBridgeContext'
 import { useWorkspace } from '../context/WorkspaceContext'
-import { api } from '../lib/api'
+import { api, principalHeaders } from '../lib/api'
 import {
   appendStudioHistoryRun,
   clearStudioHistory,
@@ -65,20 +65,144 @@ function fmtTotal(u: TokenUsage): string {
   return (a + b).toLocaleString()
 }
 
+type VariantImageState = {
+  promptDraft: string
+  imageDataUrl: string | null
+  loadingPrompt: boolean
+  loadingImage: boolean
+  error: string | null
+  approved: boolean
+}
+
+function emptyVariantImage(): VariantImageState {
+  return {
+    promptDraft: '',
+    imageDataUrl: null,
+    loadingPrompt: false,
+    loadingImage: false,
+    error: null,
+    approved: false,
+  }
+}
+
+function VariantImagePanel({
+  formatName,
+  toneName,
+  ollamaImageModel,
+  slice,
+  onPatch,
+  onSuggest,
+  onGenerate,
+}: {
+  formatName: string
+  toneName: string
+  ollamaImageModel: string
+  slice: VariantImageState | undefined
+  onPatch: (patch: Partial<VariantImageState>) => void
+  onSuggest: () => void
+  onGenerate: (approvedPrompt: string) => void
+}) {
+  const v = { ...emptyVariantImage(), ...slice }
+  return (
+    <div className="variant-image-panel">
+      <div className="variant-image-head">
+        <span className="publish-bar-label">Image for this post</span>
+        <span className="muted small">Ollama model: {ollamaImageModel || '—'}</span>
+      </div>
+      <p className="hint small" style={{ marginTop: 0 }}>
+        Suggest an English image prompt from the caption, edit it, approve it, then generate a PNG. Publishing copies
+        the caption and downloads the image (attach it in the network composer).
+      </p>
+      <div className="row tight">
+        <button
+          type="button"
+          className="btn secondary small"
+          disabled={v.loadingPrompt || v.loadingImage}
+          onClick={() => onSuggest()}
+        >
+          {v.loadingPrompt ? 'Suggesting…' : 'Suggest image prompt'}
+        </button>
+        <button
+          type="button"
+          className="btn secondary small"
+          disabled={v.loadingImage}
+          onClick={() =>
+            onPatch({
+              promptDraft: '',
+              imageDataUrl: null,
+              approved: false,
+              error: null,
+            })
+          }
+        >
+          Reset image
+        </button>
+      </div>
+      <label className="field" style={{ marginTop: '0.5rem' }}>
+        <span>Image prompt (for {formatName} · {toneName})</span>
+        <textarea
+          className="input"
+          rows={4}
+          value={v.promptDraft}
+          placeholder="Click Suggest image prompt or write your own diffusion prompt in English."
+          onChange={(e) => onPatch({ promptDraft: e.target.value, approved: false })}
+        />
+      </label>
+      <label className="check-row">
+        <input
+          type="checkbox"
+          checked={v.approved}
+          onChange={(e) => onPatch({ approved: e.target.checked })}
+        />
+        <span>I approve this prompt for image generation</span>
+      </label>
+      <div className="row tight">
+        <button
+          type="button"
+          className="btn primary small"
+          disabled={
+            !v.approved || !v.promptDraft.trim() || v.loadingImage || v.loadingPrompt
+          }
+          onClick={() => onGenerate(v.promptDraft)}
+        >
+          {v.loadingImage ? 'Generating image…' : 'Generate image'}
+        </button>
+      </div>
+      {v.error ? (
+        <div className="banner error" role="alert" style={{ marginTop: '0.5rem' }}>
+          {v.error}
+        </div>
+      ) : null}
+      {v.imageDataUrl ? (
+        <figure className="variant-image-figure">
+          <img src={v.imageDataUrl} alt="Generated from approved prompt" className="variant-image-preview" />
+          <figcaption className="muted small">
+            <a href={v.imageDataUrl} download={`gigi-image-${formatName.replace(/\s+/g, '-')}.png`}>
+              Download PNG
+            </a>
+          </figcaption>
+        </figure>
+      ) : null}
+    </div>
+  )
+}
+
 function PublishBar({
   connections,
-  content,
+  caption,
+  imageDataUrl,
   tenantsOk,
   activeCustomerId,
   showFootnote,
   onPublish,
 }: {
   connections: PublishConnection[]
-  content: string
+  caption: string
+  imageDataUrl: string | null
   tenantsOk: boolean | null
   activeCustomerId: string | null
   showFootnote: boolean
-  onPublish: (platform: string, text: string) => void | Promise<void>
+  onPublish: (platform: string, caption: string, imageDataUrl: string | null) => void | Promise<void>
 }) {
   return (
     <div className="publish-bar" role="group" aria-label="Publish to connected platforms">
@@ -103,11 +227,13 @@ function PublishBar({
                 type="button"
                 className={`btn small ${ready ? 'primary' : 'secondary'}`}
                 title={
-                  ready
-                    ? 'Copy this text and open the platform composer in a new tab'
-                    : 'Copy and open composer — set connection to active with a token in Integrations for API publish later'
+                  imageDataUrl
+                    ? 'Copy caption, download PNG, open composer — attach the file where the network allows images'
+                    : ready
+                      ? 'Copy caption and open the platform composer in a new tab'
+                      : 'Copy caption and open composer — set connection to active with a token in Integrations for API publish later'
                 }
-                onClick={() => void onPublish(c.platform, content)}
+                onClick={() => void onPublish(c.platform, caption, imageDataUrl)}
               >
                 {label}
               </button>
@@ -117,8 +243,8 @@ function PublishBar({
       )}
       {showFootnote && connections.length > 0 ? (
         <p className="publish-hint muted small">
-          One-click API posting is not enabled yet; this copies the variant and opens the right composer so you can
-          paste and finish the post.
+          One-click API posting is not enabled yet. This copies the caption, opens the composer
+          {imageDataUrl ? ', and downloads the generated image so you can attach it with the post' : ''}.
         </p>
       ) : null}
     </div>
@@ -156,6 +282,8 @@ export default function Studio() {
   const [error, setError] = useState<string | null>(null)
   const [historyRuns, setHistoryRuns] = useState<StudioHistoryRun[]>([])
   const [publishConnections, setPublishConnections] = useState<PublishConnection[]>([])
+  const [ollamaImageModel, setOllamaImageModel] = useState('')
+  const [variantImages, setVariantImages] = useState<Record<number, VariantImageState>>({})
 
   const variantCount = useMemo(
     () => Object.values(selectedPairs).filter(Boolean).length,
@@ -169,6 +297,12 @@ export default function Studio() {
     ])
     setPresets(p)
     setTemplates(t.templates || [])
+    try {
+      const h = await api<{ ollama_image_model?: string }>('/api/health')
+      setOllamaImageModel(typeof h?.ollama_image_model === 'string' ? h.ollama_image_model : '')
+    } catch {
+      setOllamaImageModel('')
+    }
     setError(null)
   }, [])
 
@@ -253,6 +387,76 @@ export default function Studio() {
     brief,
   ])
 
+  const patchVariantImage = useCallback((index: number, patch: Partial<VariantImageState>) => {
+    setVariantImages((m) => ({
+      ...m,
+      [index]: { ...emptyVariantImage(), ...m[index], ...patch },
+    }))
+  }, [])
+
+  const suggestImagePrompt = useCallback(
+    async (index: number) => {
+      const r = results[index]
+      if (!r) return
+      patchVariantImage(index, { loadingPrompt: true, error: null })
+      try {
+        const res = await api<{ image_prompt: string }>('/api/studio/image-prompt', {
+          method: 'POST',
+          headers: principalHeaders(principalId),
+          body: JSON.stringify({
+            social_text: r.content,
+            format_name: r.format_name,
+            tone_name: r.tone_name,
+            output_language: outputLanguage,
+            temperature: 0.6,
+            ...(tenantsOk === true && activeCustomerId ? { customer_id: activeCustomerId } : {}),
+          }),
+        })
+        patchVariantImage(index, {
+          promptDraft: res.image_prompt,
+          loadingPrompt: false,
+          approved: false,
+          imageDataUrl: null,
+        })
+      } catch (e) {
+        patchVariantImage(index, {
+          loadingPrompt: false,
+          error: e instanceof Error ? e.message : String(e),
+        })
+      }
+    },
+    [results, outputLanguage, patchVariantImage, principalId, tenantsOk, activeCustomerId],
+  )
+
+  const generateVariantImage = useCallback(
+    async (index: number, prompt: string) => {
+      const p = prompt.trim()
+      if (!p) return
+      patchVariantImage(index, { loadingImage: true, error: null })
+      try {
+        const res = await api<{ image_base64: string; mime_type?: string }>('/api/studio/generate-image', {
+          method: 'POST',
+          headers: principalHeaders(principalId),
+          body: JSON.stringify({
+            prompt: p,
+            ...(tenantsOk === true && activeCustomerId ? { customer_id: activeCustomerId } : {}),
+          }),
+        })
+        const mime = res.mime_type?.trim() || 'image/png'
+        patchVariantImage(index, {
+          imageDataUrl: `data:${mime};base64,${res.image_base64}`,
+          loadingImage: false,
+        })
+      } catch (e) {
+        patchVariantImage(index, {
+          loadingImage: false,
+          error: e instanceof Error ? e.message : String(e),
+        })
+      }
+    },
+    [patchVariantImage, principalId, tenantsOk, activeCustomerId],
+  )
+
   const toggleTemplate = (id: string) => {
     setSelectedTemplateIds((s) => ({ ...s, [id]: !s[id] }))
   }
@@ -292,6 +496,7 @@ export default function Studio() {
     setError(null)
     setResults([])
     setUsageSummary(null)
+    setVariantImages({})
     try {
       const res = await api<{
         results: GenResult[]
@@ -299,12 +504,14 @@ export default function Studio() {
         usage_notes?: string
       }>('/api/generate', {
         method: 'POST',
+        headers: principalHeaders(principalId),
         body: JSON.stringify({
           brief,
           items,
           template_ids,
           output_language: outputLanguage,
           temperature,
+          ...(tenantsOk === true && activeCustomerId ? { customer_id: activeCustomerId } : {}),
         }),
       })
       setResults(res.results)
@@ -330,18 +537,31 @@ export default function Studio() {
 
   const selectedTplCount = Object.values(selectedTemplateIds).filter(Boolean).length
 
-  const copyAndOpenComposer = useCallback(async (platform: string, text: string) => {
-    try {
-      await navigator.clipboard.writeText(text)
-    } catch {
-      /* still open composer */
-    }
-    window.open(composerUrlForPlatform(platform), '_blank', 'noopener,noreferrer')
-  }, [])
+  const copyAndOpenComposer = useCallback(
+    async (platform: string, caption: string, imageDataUrl: string | null) => {
+      try {
+        await navigator.clipboard.writeText(caption)
+      } catch {
+        /* still open composer */
+      }
+      if (imageDataUrl) {
+        const a = document.createElement('a')
+        a.href = imageDataUrl
+        a.download = `gigi-${platform}-post.png`
+        a.rel = 'noopener'
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+      }
+      window.open(composerUrlForPlatform(platform), '_blank', 'noopener,noreferrer')
+    },
+    [],
+  )
 
   const restoreHistoryRun = useCallback((run: StudioHistoryRun) => {
     setResults(run.results as GenResult[])
     setUsageSummary(run.usageSummary)
+    setVariantImages({})
     setError(null)
   }, [])
 
@@ -380,7 +600,8 @@ export default function Studio() {
 
       {activeWorkspaceName && (
         <div className="banner soft" role="status">
-          Active workspace: <strong>{activeWorkspaceName}</strong>. Generation uses local presets. Use{' '}
+          Active workspace: <strong>{activeWorkspaceName}</strong>. Generation uses local presets; token usage from
+          Generate and image steps is logged to <strong>Workspace → Consolidated token usage</strong>. Use{' '}
           <strong>Publish</strong> under each variant to copy text and open the composer for a linked account (full
           API publish is planned). History is saved in this browser per workspace.
         </div>
@@ -630,8 +851,9 @@ export default function Studio() {
           <div>
             <h2 className="step-title">Output</h2>
             <p className="step-desc">
-              Review each block, copy, or publish via your linked integrations. Past runs stay in{' '}
-              <strong>Generation history</strong> below.
+              Review each block, add an optional image (suggested prompt → approve → generate), then publish caption
+              plus downloaded image via your linked integrations. Past runs stay in <strong>Generation history</strong>{' '}
+              below.
             </p>
           </div>
         </div>
@@ -711,9 +933,19 @@ export default function Studio() {
                     </button>
                   </div>
                   <pre className="result-body">{r.content}</pre>
+                  <VariantImagePanel
+                    formatName={r.format_name}
+                    toneName={r.tone_name}
+                    ollamaImageModel={ollamaImageModel}
+                    slice={variantImages[i]}
+                    onPatch={(patch) => patchVariantImage(i, patch)}
+                    onSuggest={() => void suggestImagePrompt(i)}
+                    onGenerate={(prompt) => void generateVariantImage(i, prompt)}
+                  />
                   <PublishBar
                     connections={publishConnections}
-                    content={r.content}
+                    caption={r.content}
+                    imageDataUrl={variantImages[i]?.imageDataUrl ?? null}
                     tenantsOk={tenantsOk}
                     activeCustomerId={activeCustomerId}
                     showFootnote
@@ -826,7 +1058,8 @@ export default function Studio() {
                           <pre className="result-body">{r.content}</pre>
                           <PublishBar
                             connections={publishConnections}
-                            content={r.content}
+                            caption={r.content}
+                            imageDataUrl={null}
                             tenantsOk={tenantsOk}
                             activeCustomerId={activeCustomerId}
                             showFootnote={false}

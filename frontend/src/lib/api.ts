@@ -15,6 +15,11 @@ function formatApiErrorBody(status: number, text: string): string {
   return raw
 }
 
+/** Merge with request init when attributing usage to a workspace (backend verifies membership). */
+export function principalHeaders(principalId: string): Record<string, string> {
+  return { 'X-Principal-Id': principalId.trim() || 'local-dev' }
+}
+
 export async function api<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(path, {
     ...init,

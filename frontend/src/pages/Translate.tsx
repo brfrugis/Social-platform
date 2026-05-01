@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslationStudioBridge } from '../context/TranslationStudioBridgeContext'
-import { api } from '../lib/api'
+import { useWorkspace } from '../context/WorkspaceContext'
+import { api, principalHeaders } from '../lib/api'
 
 const SOURCE_LANGS = ['English', 'Spanish'] as const
 
@@ -12,6 +13,7 @@ function fmtCount(n: number | null | undefined): string {
 }
 
 export default function Translate() {
+  const { principalId, tenantsOk, activeCustomerId } = useWorkspace()
   const { exportTranslationToStudio } = useTranslationStudioBridge()
   const [translateIn, setTranslateIn] = useState('')
   const [sourceLanguage, setSourceLanguage] = useState<string>(SOURCE_LANGS[0])
@@ -38,10 +40,12 @@ export default function Translate() {
         usage_notes?: string
       }>('/api/translate', {
         method: 'POST',
+        headers: principalHeaders(principalId),
         body: JSON.stringify({
           text: translateIn,
           source_language: sourceLanguage,
           temperature: 0.3,
+          ...(tenantsOk === true && activeCustomerId ? { customer_id: activeCustomerId } : {}),
         }),
       })
       setTranslated(res.translated)

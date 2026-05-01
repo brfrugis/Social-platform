@@ -1,6 +1,30 @@
-import { useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { tenantApi } from '../lib/tenantApi'
 import { useWorkspace } from '../context/WorkspaceContext'
+
+type UsageWindow = '24h' | '48h' | '7d' | '30d'
+
+type TokenUsageBucket = { prompt_tokens: number; completion_tokens: number }
+
+type WorkspaceUsage = {
+  window: string
+  since: string
+  until: string
+  totals: TokenUsageBucket
+  by_operation: Record<string, TokenUsageBucket>
+  event_count: number
+}
+
+const USAGE_WINDOWS: { id: UsageWindow; label: string }[] = [
+  { id: '24h', label: 'Last 24 hours' },
+  { id: '48h', label: 'Last 48 hours' },
+  { id: '7d', label: 'Last 7 days' },
+  { id: '30d', label: 'Last 30 days (monthly)' },
+]
+
+function fmtTok(n: number): string {
+  return n.toLocaleString()
+}
 
 type Bootstrap = {
   customer: { id: string; name: string; slug: string | null; created_at: string }
@@ -24,6 +48,36 @@ export default function Workspace() {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [err, setErr] = useState<string | null>(null)
+
+  const [usageWindow, setUsageWindow] = useState<UsageWindow>('24h')
+  const [usageLoading, setUsageLoading] = useState(false)
+  const [usageErr, setUsageErr] = useState<string | null>(null)
+  const [usage, setUsage] = useState<WorkspaceUsage | null>(null)
+
+  const loadUsage = useCallback(async () => {
+    if (!activeCustomerId || tenantsOk !== true) {
+      setUsage(null)
+      return
+    }
+    setUsageLoading(true)
+    setUsageErr(null)
+    try {
+      const u = await tenantApi<WorkspaceUsage>(
+        principalId,
+        `/api/tenants/customers/${activeCustomerId}/usage/tokens?window=${usageWindow}`,
+      )
+      setUsage(u)
+    } catch (e) {
+      setUsageErr(e instanceof Error ? e.message : 'Failed to load usage')
+      setUsage(null)
+    } finally {
+      setUsageLoading(false)
+    }
+  }, [principalId, activeCustomerId, tenantsOk, usageWindow])
+
+  useEffect(() => {
+    void loadUsage()
+  }, [loadUsage])
 
   async function onCreate(e: FormEvent) {
     e.preventDefault()
@@ -127,7 +181,9 @@ export default function Workspace() {
           <div>
             <h2 className="step-title">Active customer</h2>
             <p className="step-desc">
-              Selecting a customer scopes <strong>Integrations</strong> and shows in the top bar when the API is up.
+              Selecting a customer scopes <strong>Integrations</strong>, attributes <strong>token usage</strong> from
+              Studio and Translate when you run them with this customer active, and shows in the top bar when the API is
+              up.
             </p>
           </div>
         </div>
@@ -168,6 +224,96 @@ export default function Workspace() {
           </ul>
         )}
       </section>
+
+      {tenantsOk === true && activeCustomerId && (
+        <section className="step-card">
+          <p className="section-eyebrow">Ollama usage</p>
+          <div className="step-head">
+            <div>
+              <h2 className="step-title">Consolidated token usage</h2>
+              <p className="step-desc">
+                Totals from logged API calls for this customer when your principal is a member. Counts follow Ollama{' '}
+                <code className="kbd">prompt_eval_count</code> and <code className="kbd">eval_count</code> per request.
+              </p>
+            </div>
+            <div className="row tight">
+              <label className="field">
+                <span className="sr-only">Time range</span>
+                <select
+                  className="input input-compact"
+                  value={usageWindow}
+                  onChange={(e) => setUsageWindow(e.target.value as UsageWindow)}
+                  aria-label="Time range for token usage"
+                >
+                  {USAGE_WINDOWS.map((w) => (
+                    <option key={w.id} value={w.id}>
+                      {w.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="button" className="btn secondary small" onClick={() => void loadUsage()} disabled={busy}>
+                {usageLoading ? 'Loading…' : 'Refresh'}
+              </button>
+            </div>
+          </div>
+          {usageErr && (
+            <div className="banner error" role="alert">
+              {usageErr}
+            </div>
+          )}
+          {usage && !usageErr && (
+            <>
+              <div className="usage-panel compact-bottom" role="status">
+                <div className="usage-panel-title">Totals · {usage.event_count} logged call(s)</div>
+                <div className="usage-grid">
+                  <div className="usage-metric">
+                    <span className="usage-label">Prompt tokens</span>
+                    <span className="usage-value">{fmtTok(usage.totals.prompt_tokens)}</span>
+                  </div>
+                  <div className="usage-metric">
+                    <span className="usage-label">Completion tokens</span>
+                    <span className="usage-value">{fmtTok(usage.totals.completion_tokens)}</span>
+                  </div>
+                  <div className="usage-metric">
+                    <span className="usage-label">Sum (both)</span>
+                    <span className="usage-value">
+                      {fmtTok(usage.totals.prompt_tokens + usage.totals.completion_tokens)}
+                    </span>
+                  </div>
+                </div>
+                <p className="usage-hint muted small" style={{ marginBottom: 0 }}>
+                  Window {usage.window}: {new Date(usage.since).toLocaleString()} → {new Date(usage.until).toLocaleString()}
+                </p>
+              </div>
+              {Object.keys(usage.by_operation).length > 0 ? (
+                <table className="workspace-usage-table">
+                  <thead>
+                    <tr>
+                      <th>Operation</th>
+                      <th>Prompt</th>
+                      <th>Completion</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {Object.entries(usage.by_operation).map(([op, b]) => (
+                      <tr key={op}>
+                        <td>
+                          <code className="kbd">{op}</code>
+                        </td>
+                        <td>{fmtTok(b.prompt_tokens)}</td>
+                        <td>{fmtTok(b.completion_tokens)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="muted small">No usage rows in this range yet — run Studio or Translate with this customer selected.</p>
+              )}
+            </>
+          )}
+        </section>
+      )}
 
       <section className="step-card">
         <div className="step-head">

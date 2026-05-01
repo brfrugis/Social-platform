@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import uuid
-from fastapi import APIRouter, HTTPException, status
+from datetime import datetime, timezone
+
+from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +28,13 @@ from app.schemas.tenants import (
     SocialConnectionCreate,
     SocialConnectionOut,
     SocialConnectionPatch,
+    TokenUsageBucketOut,
+    WorkspaceTokenUsageOut,
+)
+from app.services.workspace_token_usage import (
+    UsageWindow,
+    fetch_workspace_usage_summary,
+    window_start_utc,
 )
 
 router = APIRouter(prefix="/api/tenants", tags=["tenants"])
@@ -122,6 +131,34 @@ async def get_customer(customer_id: uuid.UUID, session: DbSession, principal: Pr
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
     return CustomerOut.model_validate(row)
+
+
+@router.get("/customers/{customer_id}/usage/tokens", response_model=WorkspaceTokenUsageOut)
+async def workspace_token_usage(
+    customer_id: uuid.UUID,
+    session: DbSession,
+    principal: PrincipalId,
+    window: UsageWindow = Query(default=UsageWindow.h24),
+):
+    await _require_membership(session, customer_id, principal)
+    until = datetime.now(timezone.utc)
+    since = window_start_utc(window)
+    raw = await fetch_workspace_usage_summary(session, customer_id, since, until)
+    by_op = {
+        k: TokenUsageBucketOut(prompt_tokens=v[0], completion_tokens=v[1])
+        for k, v in raw.by_operation.items()
+    }
+    return WorkspaceTokenUsageOut(
+        window=window.value,
+        since=since,
+        until=until,
+        totals=TokenUsageBucketOut(
+            prompt_tokens=raw.totals_prompt,
+            completion_tokens=raw.totals_completion,
+        ),
+        by_operation=by_op,
+        event_count=raw.event_count,
+    )
 
 
 @router.patch("/customers/{customer_id}", response_model=CustomerOut)

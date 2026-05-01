@@ -73,6 +73,8 @@ The **strip at the top** (1 → 4) is a **suggested order**, not a hard lock —
 ### Step 4 — Output
 
 - After **Generate**, each **card** shows format, tone, optional guardrail names, **per‑call token counts** (`in … · out …`), and **Copy**.
+- **Image for this post:** **Suggest image prompt** (text model) → edit → check **approve** → **Generate image** (Ollama **`OLLAMA_IMAGE_MODEL`**, e.g. `x/z-image-turbo`). **Qwen-Image-2512** is not a built‑in Ollama tag; use an Ollama image model or run Qwen via Hugging Face — see **[IMAGE_GENERATION.md](./IMAGE_GENERATION.md)**.
+- **Publish:** copy caption, optional PNG download, open the network composer.
 - **Token usage (this run)** summarizes **prompt**, **completion**, and **total** across variants (Ollama may omit some counts when caching — see note under the panel).
 
 ---

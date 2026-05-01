@@ -64,6 +64,29 @@ Produce the final piece(s) only."""
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
+def build_image_prompt_messages(
+    *,
+    social_text: str,
+    format_name: str,
+    tone_name: str,
+    output_language: str,
+) -> list[dict[str, str]]:
+    """Ask the text LLM for a single diffusion-style image prompt for the social post."""
+    system = """You write concise text-to-image prompts for diffusion models (e.g. Qwen-Image, FLUX, Z-Image).
+Output exactly one flowing paragraph in English (even if the social post is in another language).
+Describe subject, setting, lighting, camera or illustration style, mood, and colors.
+If the post implies on-image text or a logo, mention it clearly.
+No title, no bullet list, no quotation marks around the whole prompt, no markdown fences — only the prompt text."""
+
+    user = f"""### Social post ({format_name} · {tone_name}; copy is written for {output_language.strip()})
+{social_text.strip()}
+
+### Task
+Write one image-generation prompt for a hero or feed image that fits this post. Keep it under 120 words."""
+
+    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+
 def build_translation_messages(
     *,
     text: str,

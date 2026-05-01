@@ -1,4 +1,5 @@
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import asynccontextmanager
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
@@ -35,5 +36,15 @@ def engine_configured() -> bool:
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     if _async_session_maker is None:
         raise RuntimeError("Database session requested but DATABASE_URL is not configured")
+    async with _async_session_maker() as session:
+        yield session
+
+
+@asynccontextmanager
+async def async_session_scope() -> AsyncIterator[AsyncSession | None]:
+    """Short-lived session for optional side effects (e.g. usage logging). Yields None if DB is disabled."""
+    if _async_session_maker is None:
+        yield None
+        return
     async with _async_session_maker() as session:
         yield session

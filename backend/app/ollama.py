@@ -5,6 +5,8 @@ import httpx
 
 from .settings import settings
 
+IMAGE_GEN_TIMEOUT_S = 1200.0
+
 
 @dataclass(frozen=True)
 class OllamaUsage:
@@ -62,3 +64,44 @@ async def chat_completion(
         if not content:
             raise RuntimeError(f"Unexpected Ollama response: {data!r}")
         return ChatResult(content=content.strip(), usage=_parse_usage(data))
+
+
+@dataclass(frozen=True)
+class ImageGenResult:
+    """Base64 PNG (or model-native) from Ollama /api/generate for image models."""
+
+    image_base64: str
+    usage: OllamaUsage
+
+
+async def generate_image_t2i(
+    prompt: str,
+    *,
+    model: str | None = None,
+) -> ImageGenResult:
+    """Call Ollama image generation. Requires a T2I-capable model (see Ollama image generation docs)."""
+    tag = (model or settings.ollama_image_model).strip()
+    if not tag:
+        raise RuntimeError("ollama_image_model is empty")
+    payload: dict = {
+        "model": tag,
+        "prompt": prompt.strip(),
+        "stream": False,
+    }
+    timeout = max(float(settings.request_timeout_s), IMAGE_GEN_TIMEOUT_S)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        r = await client.post(
+            f"{settings.ollama_base_url.rstrip('/')}/api/generate",
+            json=payload,
+        )
+        r.raise_for_status()
+        data = r.json()
+    b64 = data.get("image")
+    if not b64 and isinstance(data.get("images"), list) and data["images"]:
+        b64 = data["images"][0]
+    if not isinstance(b64, str) or not b64.strip():
+        raise RuntimeError(
+            "Ollama returned no image field. Is this an image-generation model? "
+            f"model={tag!r} response_keys={sorted(data.keys())!r}"
+        )
+    return ImageGenResult(image_base64=b64.strip(), usage=_parse_usage(data))

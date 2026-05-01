@@ -32,7 +32,7 @@ flowchart TB
     PROXY["HTTP proxy: /api to backend"]
   end
   subgraph api["FastAPI :8000"]
-    CORE["/api/health, presets, templates, generate, translate"]
+    CORE["/api/health, presets, templates, generate, translate, studio/image-prompt, studio/generate-image"]
     TEN["/api/tenants/* + X-Principal-Id"]
     FILES["Read/write data/presets.json, data/templates.json"]
   end
@@ -276,7 +276,8 @@ Build the frontend (`npm run build` in `frontend`), then run the API: if **`fron
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | Ollama HTTP API |
-| `OLLAMA_MODEL` | `qwen2.5:14b` | Model tag |
+| `OLLAMA_MODEL` | `qwen2.5:14b` | Text model tag (Studio copy, Translate) |
+| `OLLAMA_IMAGE_MODEL` | `x/z-image-turbo` | Ollama **image** model for Studio (`/api/generate`). Qwen-Image-2512 is HF/diffusers, not a default Ollama tag — see [docs/IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md) |
 | `PRESETS_PATH` | `../data/presets.json` | Path relative to `backend/` unless absolute |
 | `TEMPLATES_PATH` | `../data/templates.json` | Guardrail templates store |
 | `REQUEST_TIMEOUT_S` | `600` | Long generations on CPU |

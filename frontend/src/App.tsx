@@ -53,10 +53,15 @@ function AppShell({ nav, setNav }: AppShellProps) {
 
   const loadHealth = useCallback(async () => {
     try {
-      const h = await api<{ ollama_model: string; ollama_base_url: string }>(
-        '/api/health',
+      const h = await api<{
+        ollama_model: string
+        ollama_base_url: string
+        ollama_image_model?: string
+      }>('/api/health')
+      const img = h.ollama_image_model?.trim()
+      setHealth(
+        `${h.ollama_model} @ ${h.ollama_base_url}${img ? ` · image: ${img}` : ''}`,
       )
-      setHealth(`${h.ollama_model} @ ${h.ollama_base_url}`)
       setBanner(null)
     } catch (e) {
       setHealth('')
