@@ -2,6 +2,16 @@
 
 **GIGI-AI** is a local-first **WebUI** for social content, powered by **Qwen 14B** (via [Ollama](https://ollama.com)): **formats** and **tones** from `data/presets.json`, plus optional **guardrail templates** from `data/templates.json`. Includes **Translate to pt-BR** for **English or Spanish** source text.
 
+## Documentation
+
+| Resource | What it is |
+|----------|------------|
+| **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** | **Frontend / product walkthrough** — same order and wording as the live UI (sidebar, Studio steps, Translate, Templates, Library, tokens, troubleshooting). |
+| **[docs/INSTALLATION.md](docs/INSTALLATION.md)** | **Full installation guide** — OS, Git, Ollama, model, Python packages, Node/npm packages, fonts, scripts, verification. |
+| **[docs/README.md](docs/README.md)** | Index of the `docs/` folder. |
+
+**One-command setup (macOS / Linux):** after cloning, run **`./scripts/install-all.sh`** (installs Ollama if missing, pulls the default model, creates `backend/.venv`, runs `npm install`, copies `.env`). See [docs/INSTALLATION.md](docs/INSTALLATION.md) for options and Windows notes.
+
 ## Prerequisites
 
 1. **Ollama** installed and running (`ollama serve` is usually automatic after install).
@@ -32,7 +42,7 @@ The **React app** is served by **Vite on port 5173** only. The API on **8000** i
 
 ### Easiest: one terminal for both
 
-From the repo root (after `backend/.venv` and `frontend/node_modules` exist):
+From the repo root (after **`./scripts/install-all.sh`** or manual `venv` + `npm install`):
 
 ```bash
 chmod +x scripts/dev.sh
