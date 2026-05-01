@@ -9,8 +9,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.deps import DbSession, PrincipalId
 from app.models.customer import Customer
 from app.models.customer_member import CustomerMember
-from app.models.enums import MemberRole
+from app.models.enums import MemberRole, SocialPlatform
 from app.models.social_connection import SocialConnection
+from app.schemas.social_platforms import (
+    OAUTH_SCOPES_OMITTED,
+    count_identity_patch_fragments,
+    materialize_connection,
+    merge_identity_patch,
+)
 from app.schemas.tenants import (
     CustomerBootstrapOut,
     CustomerCreate,
@@ -163,16 +169,27 @@ async def create_connection(
     customer_id: uuid.UUID, body: SocialConnectionCreate, session: DbSession, principal: PrincipalId
 ):
     await _require_membership(session, customer_id, principal)
+    try:
+        external_account_id, extra = materialize_connection(
+            body.platform,
+            linkedin=body.linkedin,
+            x=body.x,
+            instagram=body.instagram,
+            facebook=body.facebook,
+            oauth_scopes_granted=body.oauth_scopes_granted,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
     conn = SocialConnection(
         customer_id=customer_id,
         platform=body.platform.value,
-        external_account_id=body.external_account_id.strip(),
+        external_account_id=external_account_id,
         display_label=(body.display_label or "").strip() or None,
         status=body.status.value,
         access_token=body.access_token,
         refresh_token=body.refresh_token,
         token_expires_at=body.token_expires_at,
-        extra=body.connection_metadata or {},
+        extra=extra,
     )
     session.add(conn)
     try:
@@ -234,6 +251,58 @@ async def patch_connection(
     row = q.scalar_one_or_none()
     if not row:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Connection not found")
+    plat = SocialPlatform(row.platform)
+    data = body.model_dump(exclude_unset=True)
+    linkedin = body.linkedin if "linkedin" in data else None
+    x_spec = body.x if "x" in data else None
+    instagram = body.instagram if "instagram" in data else None
+    facebook = body.facebook if "facebook" in data else None
+    oauth_kw: str | None | object = OAUTH_SCOPES_OMITTED
+    if "oauth_scopes_granted" in data:
+        oauth_kw = body.oauth_scopes_granted
+
+    if linkedin and plat != SocialPlatform.LINKEDIN:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="`linkedin` identity is only valid for linkedin connections.",
+        )
+    if x_spec and plat != SocialPlatform.X:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="`x` identity is only valid for x connections.",
+        )
+    if instagram and plat != SocialPlatform.INSTAGRAM:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="`instagram` identity is only valid for instagram connections.",
+        )
+    if facebook and plat != SocialPlatform.FACEBOOK:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="`facebook` identity is only valid for facebook connections.",
+        )
+    identity_n = count_identity_patch_fragments(
+        linkedin=linkedin,
+        x=x_spec,
+        instagram=instagram,
+        facebook=facebook,
+    )
+    if identity_n >= 1 or "oauth_scopes_granted" in data:
+        try:
+            new_ext, merged = merge_identity_patch(
+                plat,
+                dict(row.extra or {}),
+                linkedin=linkedin,
+                x=x_spec,
+                instagram=instagram,
+                facebook=facebook,
+                oauth_scopes_granted=oauth_kw,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)) from e
+        row.extra = merged
+        if new_ext is not None:
+            row.external_account_id = new_ext
     if body.display_label is not None:
         row.display_label = body.display_label.strip() or None
     if body.status is not None:
@@ -244,8 +313,6 @@ async def patch_connection(
         row.refresh_token = body.refresh_token
     if body.token_expires_at is not None:
         row.token_expires_at = body.token_expires_at
-    if body.connection_metadata is not None:
-        row.extra = body.connection_metadata
     await session.commit()
     await session.refresh(row)
     return SocialConnectionOut.from_orm_masked(row)

@@ -120,7 +120,7 @@ Cloud phases below **reuse the same product surfaces** (Studio, templates, prese
 
 **Data model sketch:** `Customer` → `SocialConnection` (platform, external account id, encrypted tokens, status) → `ContentItem` / `PublishJob` linked to connections and to Studio outputs.
 
-**Local implementation (started):** PostgreSQL schema and `/api/tenants/*` REST surface (customers, members, connections) with Docker Compose and Alembic — see **[LOCAL_POSTGRES.md](./LOCAL_POSTGRES.md)**. Studio UI scoping by active customer is a follow-up.
+**Local implementation (started):** PostgreSQL schema and `/api/tenants/*` REST surface (customers, members, connections) with Docker Compose and Alembic — see **[LOCAL_POSTGRES.md](./LOCAL_POSTGRES.md)**. **Integrations** enforce per-vendor identity shapes — see **[INTEGRATIONS_PLATFORMS.md](./INTEGRATIONS_PLATFORMS.md)**. Studio UI scoping by active customer is a follow-up.
 
 **Exit criteria:** API and UI never leak cross-customer data; adding a new platform is “one more connection type,” not a fork of the app.
 

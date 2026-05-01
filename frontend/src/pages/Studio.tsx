@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useTranslationStudioBridge } from '../context/TranslationStudioBridgeContext'
 import { useWorkspace } from '../context/WorkspaceContext'
 import { api } from '../lib/api'
+import {
+  appendStudioHistoryRun,
+  clearStudioHistory,
+  loadStudioHistory,
+  removeStudioHistoryRun,
+  type StudioHistoryRun,
+} from '../lib/studioHistoryStorage'
+import { composerUrlForPlatform, PLATFORM_LABEL } from '../lib/studioPublish'
+import { tenantApi } from '../lib/tenantApi'
 
 type Format = { id: string; name: string; description: string; sample?: string }
 type Tone = { id: string; name: string; instructions: string; sample?: string }
@@ -25,6 +35,14 @@ type GenResult = {
   usage?: TokenUsage
 }
 
+type PublishConnection = {
+  id: string
+  platform: string
+  display_label: string | null
+  status: string
+  has_access_token: boolean
+}
+
 const OUTPUT_LANGS = ['Portuguese (Brazil)', 'English', 'Spanish'] as const
 
 type TokenUsage = {
@@ -47,12 +65,80 @@ function fmtTotal(u: TokenUsage): string {
   return (a + b).toLocaleString()
 }
 
+function PublishBar({
+  connections,
+  content,
+  tenantsOk,
+  activeCustomerId,
+  showFootnote,
+  onPublish,
+}: {
+  connections: PublishConnection[]
+  content: string
+  tenantsOk: boolean | null
+  activeCustomerId: string | null
+  showFootnote: boolean
+  onPublish: (platform: string, text: string) => void | Promise<void>
+}) {
+  return (
+    <div className="publish-bar" role="group" aria-label="Publish to connected platforms">
+      <span className="publish-bar-label">Publish</span>
+      {connections.length === 0 ? (
+        <span className="muted small">
+          {tenantsOk === true && activeCustomerId
+            ? 'No integrations for this workspace — add connections under Integrations.'
+            : tenantsOk === false
+              ? 'Tenant API offline — open Integrations after the database is available.'
+              : 'Open Integrations (with workspace and DB) to link LinkedIn, X, Instagram, or Facebook.'}
+        </span>
+      ) : (
+        <div className="publish-actions">
+          {connections.map((c) => {
+            const labelBase = PLATFORM_LABEL[c.platform] ?? c.platform
+            const label = c.display_label ? `${labelBase} · ${c.display_label}` : labelBase
+            const ready = c.status === 'active' && c.has_access_token
+            return (
+              <button
+                key={c.id}
+                type="button"
+                className={`btn small ${ready ? 'primary' : 'secondary'}`}
+                title={
+                  ready
+                    ? 'Copy this text and open the platform composer in a new tab'
+                    : 'Copy and open composer — set connection to active with a token in Integrations for API publish later'
+                }
+                onClick={() => void onPublish(c.platform, content)}
+              >
+                {label}
+              </button>
+            )
+          })}
+        </div>
+      )}
+      {showFootnote && connections.length > 0 ? (
+        <p className="publish-hint muted small">
+          One-click API posting is not enabled yet; this copies the variant and opens the right composer so you can
+          paste and finish the post.
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
 export default function Studio() {
-  const { tenantsOk, activeCustomerId, customers } = useWorkspace()
+  const { principalId, tenantsOk, activeCustomerId, customers } = useWorkspace()
+  const {
+    queuedTranslationText,
+    hasPendingTranslation,
+    consumePendingTranslationForBrief,
+    clearPendingTranslationForStudio,
+  } = useTranslationStudioBridge()
   const activeWorkspaceName =
     tenantsOk === true && activeCustomerId
       ? customers.find((c) => c.id === activeCustomerId)?.name
       : null
+
+  const [importNotice, setImportNotice] = useState<string | null>(null)
 
   const [presets, setPresets] = useState<Presets>({ formats: [], tones: [] })
   const [templates, setTemplates] = useState<GuardTemplate[]>([])
@@ -68,6 +154,8 @@ export default function Studio() {
     usage_notes: string
   } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [historyRuns, setHistoryRuns] = useState<StudioHistoryRun[]>([])
+  const [publishConnections, setPublishConnections] = useState<PublishConnection[]>([])
 
   const variantCount = useMemo(
     () => Object.values(selectedPairs).filter(Boolean).length,
@@ -87,6 +175,83 @@ export default function Studio() {
   useEffect(() => {
     void load().catch((e) => setError(e instanceof Error ? e.message : String(e)))
   }, [load])
+
+  useEffect(() => {
+    setHistoryRuns(loadStudioHistory(activeCustomerId))
+  }, [activeCustomerId])
+
+  const loadPublishConnections = useCallback(async () => {
+    if (!activeCustomerId || tenantsOk !== true) {
+      setPublishConnections([])
+      return
+    }
+    try {
+      const list = await tenantApi<PublishConnection[]>(
+        principalId,
+        `/api/tenants/customers/${activeCustomerId}/connections`,
+      )
+      setPublishConnections(
+        Array.isArray(list)
+          ? list.map((r) => ({
+              id: r.id,
+              platform: r.platform,
+              display_label: r.display_label ?? null,
+              status: r.status,
+              has_access_token: !!r.has_access_token,
+            }))
+          : [],
+      )
+    } catch {
+      setPublishConnections([])
+    }
+  }, [principalId, activeCustomerId, tenantsOk])
+
+  useEffect(() => {
+    void loadPublishConnections()
+  }, [loadPublishConnections])
+
+  useEffect(() => {
+    if (!importNotice) return
+    const id = window.setTimeout(() => setImportNotice(null), 8000)
+    return () => window.clearTimeout(id)
+  }, [importNotice])
+
+  const bringFromTranslation = useCallback(() => {
+    if (!hasPendingTranslation) {
+      setError(
+        'No translation queued. On the Translate tab, run a translation to pt-BR, then click Export to Studio.',
+      )
+      return
+    }
+    const queued = queuedTranslationText.trim()
+    if (!queued) {
+      setError('Nothing to import. Try exporting again from Translate.')
+      return
+    }
+    if (brief.trim()) {
+      if (
+        !window.confirm(
+          `Replace the current brief (${brief.length} characters) with the queued translation (${queued.length} characters)?`,
+        )
+      ) {
+        return
+      }
+    }
+    const applied = consumePendingTranslationForBrief()
+    if (!applied?.trim()) {
+      setError('Queued text was cleared. Try exporting again from Translate.')
+      return
+    }
+    setBrief(applied)
+    setOutputLanguage('Portuguese (Brazil)')
+    setError(null)
+    setImportNotice('Brief filled from Translate (Brazilian Portuguese).')
+  }, [
+    hasPendingTranslation,
+    queuedTranslationText,
+    consumePendingTranslationForBrief,
+    brief,
+  ])
 
   const toggleTemplate = (id: string) => {
     setSelectedTemplateIds((s) => ({ ...s, [id]: !s[id] }))
@@ -143,10 +308,19 @@ export default function Studio() {
         }),
       })
       setResults(res.results)
-      setUsageSummary({
+      const nextUsage = {
         session_totals: res.session_totals,
         usage_notes: res.usage_notes ?? '',
+      }
+      setUsageSummary(nextUsage)
+      appendStudioHistoryRun(activeCustomerId, {
+        brief,
+        outputLanguage,
+        temperature,
+        results: res.results,
+        usageSummary: nextUsage,
       })
+      setHistoryRuns(loadStudioHistory(activeCustomerId))
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -155,6 +329,46 @@ export default function Studio() {
   }
 
   const selectedTplCount = Object.values(selectedTemplateIds).filter(Boolean).length
+
+  const copyAndOpenComposer = useCallback(async (platform: string, text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch {
+      /* still open composer */
+    }
+    window.open(composerUrlForPlatform(platform), '_blank', 'noopener,noreferrer')
+  }, [])
+
+  const restoreHistoryRun = useCallback((run: StudioHistoryRun) => {
+    setResults(run.results as GenResult[])
+    setUsageSummary(run.usageSummary)
+    setError(null)
+  }, [])
+
+  const deleteHistoryRun = useCallback(
+    (id: string) => {
+      removeStudioHistoryRun(activeCustomerId, id)
+      setHistoryRuns(loadStudioHistory(activeCustomerId))
+    },
+    [activeCustomerId],
+  )
+
+  const wipeHistory = useCallback(() => {
+    if (
+      historyRuns.length > 0 &&
+      !window.confirm(`Remove all ${historyRuns.length} saved generation(s) for this workspace in this browser?`)
+    ) {
+      return
+    }
+    clearStudioHistory(activeCustomerId)
+    setHistoryRuns([])
+  }, [activeCustomerId, historyRuns.length])
+
+  const briefPreview = (text: string, max = 96) => {
+    const t = text.replace(/\s+/g, ' ').trim()
+    if (t.length <= max) return t || '(empty brief)'
+    return `${t.slice(0, max)}…`
+  }
 
   return (
     <div className="page-stack">
@@ -166,8 +380,15 @@ export default function Studio() {
 
       {activeWorkspaceName && (
         <div className="banner soft" role="status">
-          Active workspace: <strong>{activeWorkspaceName}</strong>. Generation still uses local presets; publishing and
-          tenant-scoped flows will use this customer later.
+          Active workspace: <strong>{activeWorkspaceName}</strong>. Generation uses local presets. Use{' '}
+          <strong>Publish</strong> under each variant to copy text and open the composer for a linked account (full
+          API publish is planned). History is saved in this browser per workspace.
+        </div>
+      )}
+
+      {importNotice && (
+        <div className="banner soft" role="status">
+          {importNotice}
         </div>
       )}
 
@@ -241,11 +462,39 @@ export default function Studio() {
             <div>
               <h2 className="step-title">Brief and creativity</h2>
               <p className="step-desc">
-                Describe what to write. Temperature controls randomness: lower is more
-                predictable, higher is more varied.
+                Describe what to write, or pull in copy from <strong>Translate</strong> (pt-BR). Temperature controls
+                randomness: lower is more predictable, higher is more varied.
               </p>
             </div>
+            <div className="step-badge" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
+              <button
+                type="button"
+                className={`btn small ${hasPendingTranslation ? 'primary' : 'secondary'}`}
+                onClick={() => bringFromTranslation()}
+                title="Paste queued translation from the Translate tab into the brief"
+              >
+                Bring from translation
+              </button>
+              {hasPendingTranslation && (
+                <button
+                  type="button"
+                  className="btn secondary small"
+                  onClick={() => {
+                    clearPendingTranslationForStudio()
+                    setImportNotice(null)
+                  }}
+                >
+                  Discard queued translation
+                </button>
+              )}
+            </div>
           </div>
+          {hasPendingTranslation && (
+            <p className="hint" style={{ marginTop: 0 }}>
+              A translation is <strong>queued</strong> for Studio — click <strong>Bring from translation</strong> to
+              use it as the brief (output language will switch to Brazilian Portuguese).
+            </p>
+          )}
           <textarea
             className="input tall"
             value={brief}
@@ -380,7 +629,10 @@ export default function Studio() {
           <span className="step-num">4</span>
           <div>
             <h2 className="step-title">Output</h2>
-            <p className="step-desc">Review each block and use Copy to paste elsewhere.</p>
+            <p className="step-desc">
+              Review each block, copy, or publish via your linked integrations. Past runs stay in{' '}
+              <strong>Generation history</strong> below.
+            </p>
           </div>
         </div>
         {results.length === 0 ? (
@@ -459,10 +711,135 @@ export default function Studio() {
                     </button>
                   </div>
                   <pre className="result-body">{r.content}</pre>
+                  <PublishBar
+                    connections={publishConnections}
+                    content={r.content}
+                    tenantsOk={tenantsOk}
+                    activeCustomerId={activeCustomerId}
+                    showFootnote
+                    onPublish={copyAndOpenComposer}
+                  />
                 </li>
               ))}
             </ul>
           </>
+        )}
+      </section>
+
+      <section className="step-card step-card-wide studio-history-section">
+        <div className="step-head">
+          <div>
+            <h2 className="step-title">Generation history</h2>
+            <p className="step-desc">
+              Each successful <strong>Generate</strong> is saved here (this device, scoped to the active workspace
+              customer when one is selected).
+            </p>
+          </div>
+          {historyRuns.length > 0 ? (
+            <button type="button" className="btn secondary small" onClick={() => wipeHistory()}>
+              Clear all
+            </button>
+          ) : null}
+        </div>
+        {historyRuns.length === 0 ? (
+          <div className="empty-out empty-out-tight">
+            <strong>No saved runs yet</strong>
+            <span className="muted">Generate once — the batch will appear here automatically.</span>
+          </div>
+        ) : (
+          <ul className="history-run-list">
+            {historyRuns.map((run) => (
+              <li key={run.id} className="history-run">
+                <details>
+                  <summary className="history-run-summary">
+                    <span className="history-run-meta">
+                      {new Date(run.createdAt).toLocaleString(undefined, {
+                        dateStyle: 'medium',
+                        timeStyle: 'short',
+                      })}
+                      <span className="sep">·</span>
+                      {run.results.length} variant{run.results.length === 1 ? '' : 's'}
+                      <span className="sep">·</span>
+                      <span className="history-brief-preview">{briefPreview(run.brief)}</span>
+                    </span>
+                  </summary>
+                  <div className="history-run-body">
+                    <div className="row tight history-run-toolbar">
+                      <button
+                        type="button"
+                        className="btn secondary small"
+                        onClick={() => restoreHistoryRun(run)}
+                      >
+                        Show in output
+                      </button>
+                      <button
+                        type="button"
+                        className="btn secondary small"
+                        onClick={() => deleteHistoryRun(run.id)}
+                      >
+                        Remove from history
+                      </button>
+                    </div>
+                    {run.usageSummary ? (
+                      <div className="usage-panel compact-bottom" role="status">
+                        <div className="usage-panel-title">Token usage (saved run)</div>
+                        <div className="usage-grid">
+                          <div className="usage-metric">
+                            <span className="usage-label">Prompt tokens</span>
+                            <span className="usage-value">
+                              {fmtCount(run.usageSummary.session_totals.prompt_eval_count)}
+                            </span>
+                          </div>
+                          <div className="usage-metric">
+                            <span className="usage-label">Completion tokens</span>
+                            <span className="usage-value">
+                              {fmtCount(run.usageSummary.session_totals.eval_count)}
+                            </span>
+                          </div>
+                          <div className="usage-metric">
+                            <span className="usage-label">Total (reported)</span>
+                            <span className="usage-value">
+                              {fmtTotal(run.usageSummary.session_totals)}
+                            </span>
+                          </div>
+                        </div>
+                        {run.usageSummary.usage_notes ? (
+                          <p className="usage-note">{run.usageSummary.usage_notes}</p>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    <ul className="results">
+                      {run.results.map((r, i) => (
+                        <li key={`${run.id}-${r.format_id}-${r.tone_id}-${i}`} className="result-block">
+                          <div className="result-head">
+                            <strong>{r.format_name}</strong>
+                            <span className="sep">·</span>
+                            <span>{r.tone_name}</span>
+                            <button
+                              type="button"
+                              className="btn secondary small"
+                              onClick={() => void navigator.clipboard.writeText(r.content)}
+                            >
+                              Copy
+                            </button>
+                          </div>
+                          <pre className="result-body">{r.content}</pre>
+                          <PublishBar
+                            connections={publishConnections}
+                            content={r.content}
+                            tenantsOk={tenantsOk}
+                            activeCustomerId={activeCustomerId}
+                            showFootnote={false}
+                            onPublish={copyAndOpenComposer}
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </details>
+              </li>
+            ))}
+          </ul>
         )}
       </section>
     </div>

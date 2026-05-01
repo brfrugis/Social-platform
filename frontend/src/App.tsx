@@ -9,6 +9,7 @@ import Integrations from './pages/Integrations'
 import Library from './pages/Library'
 import { NAV, type NavId } from './navConfig'
 import { WorkspaceProvider, useWorkspace } from './context/WorkspaceContext'
+import { TranslationStudioBridgeProvider, useTranslationStudioBridge } from './context/TranslationStudioBridgeContext'
 import './App.css'
 
 function modelFromHealth(health: string): string {
@@ -19,14 +20,31 @@ function modelFromHealth(health: string): string {
 export default function App() {
   return (
     <WorkspaceProvider>
-      <AppShell />
+      <AppWithTranslationBridge />
     </WorkspaceProvider>
   )
 }
 
-function AppShell() {
-  const { tenantsOk, activeCustomerId, customers } = useWorkspace()
+function AppWithTranslationBridge() {
   const [nav, setNav] = useState<NavId>('studio')
+  const goToStudio = useCallback(() => {
+    setNav('studio')
+  }, [])
+  return (
+    <TranslationStudioBridgeProvider goToStudio={goToStudio}>
+      <AppShell nav={nav} setNav={setNav} />
+    </TranslationStudioBridgeProvider>
+  )
+}
+
+type AppShellProps = {
+  nav: NavId
+  setNav: (id: NavId) => void
+}
+
+function AppShell({ nav, setNav }: AppShellProps) {
+  const { tenantsOk, activeCustomerId, customers } = useWorkspace()
+  const { hasPendingTranslation } = useTranslationStudioBridge()
   const [health, setHealth] = useState<string>('')
   const [banner, setBanner] = useState<string | null>(null)
 
@@ -71,7 +89,9 @@ function AppShell() {
             <button
               key={item.id}
               type="button"
-              className={`shell-link ${nav === item.id ? 'active' : ''}`}
+              className={`shell-link ${nav === item.id ? 'active' : ''} ${
+                item.id === 'studio' && hasPendingTranslation ? 'shell-link-pending' : ''
+              }`}
               onClick={() => setNav(item.id)}
               title={item.hint}
             >

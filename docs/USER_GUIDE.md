@@ -33,7 +33,7 @@ This guide follows the **same structure and labels** as the app so you can read 
 | **Translate** | **English or Spanish → Brazilian Portuguese** in one shot. |
 | **Templates** | **Create, edit, delete** guardrail packs used in Studio. |
 | **Workspace** | Phase 4 **tenant**: set **Principal ID** (`X-Principal-Id`), create/select **customers**, optional slug. Requires Postgres + **`DATABASE_URL`** (see [LOCAL_POSTGRES.md](./LOCAL_POSTGRES.md)). |
-| **Integrations** | Per **active customer**: add/edit/remove **social connections** (LinkedIn, X, Instagram, Facebook, other). Same DB requirement as Workspace. |
+| **Integrations** | Per **active customer**: add/edit/remove **social connections** with **vendor-mandatory fields** only (see [INTEGRATIONS_PLATFORMS.md](./INTEGRATIONS_PLATFORMS.md)). Same DB requirement as Workspace. |
 | **Formats and tones** | **JSON editor** for `data/presets.json` (channels and voice presets). |
 
 Footer line: short reminder of ports and **`backend/.env`**.
@@ -58,6 +58,7 @@ The **strip at the top** (1 → 4) is a **suggested order**, not a hard lock —
 ### Step 2 — Brief and creativity
 
 - **Large text area:** topic, audience, must‑include facts, words to avoid, etc.
+- **Bring from translation:** when you used **Export to Studio** on the Translate tab, click here to paste the queued pt‑BR text into the brief and set output language to **Portuguese (Brazil)**. **Discard queued translation** clears the queue without changing the brief.
 - **Output language:** Portuguese (Brazil), English, or Spanish.
 - **Temperature:** **slider** + **number** — lower = steadier, higher = more varied.
 - **Generate:** runs all checked **format × tone** pairs (see badge **N variant(s)**).
@@ -83,6 +84,7 @@ The **strip at the top** (1 → 4) is a **suggested order**, not a hard lock —
 3. **Translate to pt-BR**.
 4. **Token usage** appears above the result when Ollama returns counts.
 5. **Copy translation** copies only the Portuguese text.
+6. **Export to Studio** queues the result for the Studio brief and opens **Studio** — use **Bring from translation** in Studio → Brief to paste it (output language switches to Brazilian Portuguese).
 
 ---
 

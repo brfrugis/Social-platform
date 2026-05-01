@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslationStudioBridge } from '../context/TranslationStudioBridgeContext'
 import { api } from '../lib/api'
 
 const SOURCE_LANGS = ['English', 'Spanish'] as const
@@ -11,6 +12,7 @@ function fmtCount(n: number | null | undefined): string {
 }
 
 export default function Translate() {
+  const { exportTranslationToStudio } = useTranslationStudioBridge()
   const [translateIn, setTranslateIn] = useState('')
   const [sourceLanguage, setSourceLanguage] = useState<string>(SOURCE_LANGS[0])
   const [translated, setTranslated] = useState('')
@@ -136,7 +138,20 @@ export default function Translate() {
                 >
                   Copy translation
                 </button>
+                <button
+                  type="button"
+                  className="btn primary"
+                  onClick={() => exportTranslationToStudio(translated, { navigate: true })}
+                  title="Send this text to Studio as the brief and open Studio"
+                >
+                  Export to Studio
+                </button>
               </div>
+              <p className="hint">
+                <strong>Export to Studio</strong> saves this result for Studio and opens the Studio tab. In Studio →
+                Brief, click <strong>Bring from translation</strong> to paste it into the brief (and set output language
+                to Brazilian Portuguese).
+              </p>
             </>
           ) : (
             <div className="empty-out empty-out-tight">

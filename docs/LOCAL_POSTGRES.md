@@ -90,7 +90,7 @@ After migrations and `DATABASE_URL`, open the app (`npm run dev` or `./scripts/d
 | POST | `/api/tenants/customers` | Body: `name`, optional `slug`; adds membership **admin** for `X-Principal-Id` |
 | GET | `/api/tenants/customers` | Customers where caller is a member |
 | GET/PATCH/DELETE | `/api/tenants/customers/{id}` | PATCH/DELETE need **admin** |
-| CRUD | `/api/tenants/customers/{id}/connections` | Platform + `external_account_id`; tokens never returned in JSON (only `has_*` flags) |
+| CRUD | `/api/tenants/customers/{id}/connections` | Typed platform payload (see [INTEGRATIONS_PLATFORMS.md](./INTEGRATIONS_PLATFORMS.md)); tokens never returned (only `has_*` flags) |
 
 **Local identity:** header **`X-Principal-Id`** (defaults to `local-dev` if omitted). Replace with Cognito **`sub`** when auth lands.
 

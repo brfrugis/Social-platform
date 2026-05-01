@@ -1,12 +1,17 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react'
 import { tenantApi } from '../lib/tenantApi'
 import { useWorkspace } from '../context/WorkspaceContext'
 
-const PLATFORMS = ['linkedin', 'x', 'instagram', 'facebook', 'other'] as const
+const PLATFORMS = ['linkedin', 'x', 'instagram', 'facebook'] as const
 const STATUSES = ['pending', 'active', 'disabled', 'error'] as const
 
 type Platform = (typeof PLATFORMS)[number]
 type Status = (typeof STATUSES)[number]
+
+type LinkedInOut = { author_urn: string }
+type XOut = { user_id: string; username?: string | null }
+type InstagramOut = { facebook_page_id: string; instagram_user_id: string }
+type FacebookOut = { page_id: string }
 
 type ConnectionRow = {
   id: string
@@ -19,6 +24,11 @@ type ConnectionRow = {
   has_refresh_token: boolean
   token_expires_at: string | null
   connection_metadata: Record<string, unknown>
+  oauth_scopes_granted?: string | null
+  linkedin?: LinkedInOut | null
+  x?: XOut | null
+  instagram?: InstagramOut | null
+  facebook?: FacebookOut | null
   created_at: string
 }
 
@@ -38,6 +48,14 @@ function datetimeLocalToIso(v: string): string | null {
   return d.toISOString()
 }
 
+function identitySummary(r: ConnectionRow): string {
+  if (r.linkedin) return r.linkedin.author_urn
+  if (r.x) return r.x.username ? `${r.x.user_id} (@${r.x.username})` : r.x.user_id
+  if (r.instagram) return `IG ${r.instagram.instagram_user_id} · Page ${r.instagram.facebook_page_id}`
+  if (r.facebook) return `Page ${r.facebook.page_id}`
+  return r.external_account_id
+}
+
 export default function Integrations() {
   const { principalId, activeCustomerId, customers, tenantsOk, tenantsNotice } = useWorkspace()
 
@@ -50,24 +68,37 @@ export default function Integrations() {
 
   const [editingId, setEditingId] = useState<string | null>(null)
   const [platform, setPlatform] = useState<Platform>('linkedin')
-  const [externalId, setExternalId] = useState('')
   const [displayLabel, setDisplayLabel] = useState('')
   const [status, setStatus] = useState<Status>('pending')
   const [accessToken, setAccessToken] = useState('')
   const [refreshToken, setRefreshToken] = useState('')
   const [expiresLocal, setExpiresLocal] = useState('')
-  const [metadataJson, setMetadataJson] = useState('{}')
+  const [oauthScopes, setOauthScopes] = useState('')
+  const oauthSnapshotRef = useRef('')
+
+  const [linkedinUrn, setLinkedinUrn] = useState('')
+  const [xUserId, setXUserId] = useState('')
+  const [xUsername, setXUsername] = useState('')
+  const [igPageId, setIgPageId] = useState('')
+  const [igUserId, setIgUserId] = useState('')
+  const [fbPageId, setFbPageId] = useState('')
 
   const resetForm = useCallback(() => {
     setEditingId(null)
     setPlatform('linkedin')
-    setExternalId('')
     setDisplayLabel('')
     setStatus('pending')
     setAccessToken('')
     setRefreshToken('')
     setExpiresLocal('')
-    setMetadataJson('{}')
+    setOauthScopes('')
+    oauthSnapshotRef.current = ''
+    setLinkedinUrn('')
+    setXUserId('')
+    setXUsername('')
+    setIgPageId('')
+    setIgUserId('')
+    setFbPageId('')
   }, [])
 
   const loadConnections = useCallback(async () => {
@@ -95,18 +126,150 @@ export default function Integrations() {
     void loadConnections()
   }, [loadConnections])
 
+  function hydrateIdentityFromRow(row: ConnectionRow): string {
+    setLinkedinUrn('')
+    setXUserId('')
+    setXUsername('')
+    setIgPageId('')
+    setIgUserId('')
+    setFbPageId('')
+
+    let oauthOut = row.oauth_scopes_granted ?? ''
+
+    if (row.linkedin) {
+      setLinkedinUrn(row.linkedin.author_urn)
+      setOauthScopes(oauthOut)
+      return oauthOut
+    }
+    if (row.x) {
+      setXUserId(row.x.user_id)
+      setXUsername(row.x.username ?? '')
+      setOauthScopes(oauthOut)
+      return oauthOut
+    }
+    if (row.instagram) {
+      setIgPageId(row.instagram.facebook_page_id)
+      setIgUserId(row.instagram.instagram_user_id)
+      setOauthScopes(oauthOut)
+      return oauthOut
+    }
+    if (row.facebook) {
+      setFbPageId(row.facebook.page_id)
+      setOauthScopes(oauthOut)
+      return oauthOut
+    }
+
+    const m = row.connection_metadata
+    const li = m.linkedin
+    if (row.platform === 'linkedin' && li && typeof li === 'object' && 'author_urn' in li) {
+      setLinkedinUrn(String((li as { author_urn: string }).author_urn))
+    }
+    const xi = m.x
+    if (row.platform === 'x' && xi && typeof xi === 'object') {
+      if ('user_id' in xi) setXUserId(String((xi as { user_id: string }).user_id))
+      if ('username' in xi && (xi as { username?: string }).username)
+        setXUsername(String((xi as { username: string }).username))
+    }
+    const ig = m.instagram
+    if (row.platform === 'instagram' && ig && typeof ig === 'object') {
+      if ('facebook_page_id' in ig) setIgPageId(String((ig as { facebook_page_id: string }).facebook_page_id))
+      if ('instagram_user_id' in ig) setIgUserId(String((ig as { instagram_user_id: string }).instagram_user_id))
+    }
+    const fb = m.facebook
+    if (row.platform === 'facebook' && fb && typeof fb === 'object' && 'page_id' in fb) {
+      setFbPageId(String((fb as { page_id: string }).page_id))
+    }
+    const oauth = m.oauth
+    if (!row.oauth_scopes_granted && oauth && typeof oauth === 'object' && 'scopes_granted' in oauth) {
+      oauthOut = String((oauth as { scopes_granted: string }).scopes_granted)
+    }
+    setOauthScopes(oauthOut)
+    return oauthOut
+  }
+
   function startEdit(row: ConnectionRow) {
+    const p = row.platform as Platform
     setEditingId(row.id)
-    setPlatform((PLATFORMS.includes(row.platform as Platform) ? row.platform : 'other') as Platform)
-    setExternalId(row.external_account_id)
+    setPlatform(PLATFORMS.includes(p) ? p : 'linkedin')
     setDisplayLabel(row.display_label ?? '')
     setStatus((STATUSES.includes(row.status as Status) ? row.status : 'pending') as Status)
     setAccessToken('')
     setRefreshToken('')
     setExpiresLocal(isoToDatetimeLocal(row.token_expires_at))
-    setMetadataJson(JSON.stringify(row.connection_metadata ?? {}, null, 2))
+    oauthSnapshotRef.current = hydrateIdentityFromRow(row)
     setInfo(null)
     setErr(null)
+  }
+
+  function validateIdentity(): string | null {
+    if (platform === 'linkedin') {
+      const u = linkedinUrn.trim()
+      if (!u) return 'LinkedIn author URN is required.'
+      if (!/^urn:li:(person|organization):[A-Za-z0-9_-]+$/.test(u)) {
+        return 'LinkedIn URN must be urn:li:person:{id} or urn:li:organization:{id}.'
+      }
+    }
+    if (platform === 'x') {
+      if (!xUserId.trim()) return 'X user id is required (numeric).'
+      if (!/^\d+$/.test(xUserId.trim())) return 'X user id must be digits only.'
+    }
+    if (platform === 'instagram') {
+      if (!igPageId.trim() || !/^\d+$/.test(igPageId.trim())) return 'Facebook Page ID must be numeric.'
+      if (!igUserId.trim() || !/^\d+$/.test(igUserId.trim())) return 'Instagram user id must be numeric.'
+    }
+    if (platform === 'facebook') {
+      if (!fbPageId.trim() || !/^\d+$/.test(fbPageId.trim())) return 'Facebook Page ID must be numeric.'
+    }
+    return null
+  }
+
+  function buildCreateBody(): Record<string, unknown> {
+    const base: Record<string, unknown> = {
+      platform,
+      display_label: displayLabel.trim() || null,
+      status,
+      access_token: accessToken.trim() || null,
+      refresh_token: refreshToken.trim() || null,
+      token_expires_at: datetimeLocalToIso(expiresLocal),
+      oauth_scopes_granted: oauthScopes.trim() || null,
+    }
+    if (platform === 'linkedin') base.linkedin = { author_urn: linkedinUrn.trim() }
+    if (platform === 'x') {
+      base.x = { user_id: xUserId.trim(), username: xUsername.trim() || null }
+    }
+    if (platform === 'instagram') {
+      base.instagram = {
+        facebook_page_id: igPageId.trim(),
+        instagram_user_id: igUserId.trim(),
+      }
+    }
+    if (platform === 'facebook') base.facebook = { page_id: fbPageId.trim() }
+    return base
+  }
+
+  function buildPatchBody(): Record<string, unknown> {
+    const patch: Record<string, unknown> = {
+      display_label: displayLabel.trim() || null,
+      status,
+      token_expires_at: datetimeLocalToIso(expiresLocal),
+    }
+    const ogNext = oauthScopes.trim()
+    const ogPrev = (oauthSnapshotRef.current || '').trim()
+    if (ogNext !== ogPrev) {
+      patch.oauth_scopes_granted = ogNext || null
+    }
+    if (accessToken.trim()) patch.access_token = accessToken.trim()
+    if (refreshToken.trim()) patch.refresh_token = refreshToken.trim()
+    if (platform === 'linkedin') patch.linkedin = { author_urn: linkedinUrn.trim() }
+    if (platform === 'x') patch.x = { user_id: xUserId.trim(), username: xUsername.trim() || null }
+    if (platform === 'instagram') {
+      patch.instagram = {
+        facebook_page_id: igPageId.trim(),
+        instagram_user_id: igUserId.trim(),
+      }
+    }
+    if (platform === 'facebook') patch.facebook = { page_id: fbPageId.trim() }
+    return patch
   }
 
   async function onSubmit(e: FormEvent) {
@@ -115,54 +278,25 @@ export default function Integrations() {
     setErr(null)
     setInfo(null)
 
-    let meta: Record<string, unknown> = {}
-    const mj = metadataJson.trim()
-    if (mj) {
-      try {
-        meta = JSON.parse(mj) as Record<string, unknown>
-        if (typeof meta !== 'object' || meta === null) throw new Error('Metadata must be a JSON object')
-      } catch (ex) {
-        setErr(ex instanceof Error ? ex.message : 'Invalid JSON metadata')
-        return
-      }
-    }
-
-    const ext = externalId.trim()
-    if (!ext) {
-      setErr('External account ID is required.')
+    const v = validateIdentity()
+    if (v) {
+      setErr(v)
       return
     }
 
     setLoading(true)
     try {
       if (editingId) {
-        const patch: Record<string, unknown> = {
-          display_label: displayLabel.trim() || null,
-          status,
-          connection_metadata: meta,
-          token_expires_at: datetimeLocalToIso(expiresLocal),
-        }
-        if (accessToken.trim()) patch.access_token = accessToken.trim()
-        if (refreshToken.trim()) patch.refresh_token = refreshToken.trim()
-
         await tenantApi(principalId, `/api/tenants/customers/${activeCustomerId}/connections/${editingId}`, {
           method: 'PATCH',
-          body: JSON.stringify(patch),
+          body: JSON.stringify(buildPatchBody()),
         })
         setInfo('Connection updated.')
+        oauthSnapshotRef.current = oauthScopes.trim()
       } else {
         await tenantApi(principalId, `/api/tenants/customers/${activeCustomerId}/connections`, {
           method: 'POST',
-          body: JSON.stringify({
-            platform,
-            external_account_id: ext,
-            display_label: displayLabel.trim() || null,
-            status,
-            access_token: accessToken.trim() || null,
-            refresh_token: refreshToken.trim() || null,
-            token_expires_at: datetimeLocalToIso(expiresLocal),
-            connection_metadata: meta,
-          }),
+          body: JSON.stringify(buildCreateBody()),
         })
         setInfo('Connection added.')
       }
@@ -217,8 +351,7 @@ export default function Integrations() {
         <div className="empty-out">
           <strong>No active customer</strong>
           <span className="muted small">
-            Open <strong>Workspace</strong>, pick or create a customer, then return here to manage LinkedIn, X,
-            Instagram, Facebook, and other connections.
+            Open <strong>Workspace</strong>, pick or create a customer, then return here.
           </span>
         </div>
       </div>
@@ -228,8 +361,10 @@ export default function Integrations() {
   return (
     <div className="page-stack">
       <p className="translate-lead">
-        Social accounts for <strong>{activeCustomer?.name ?? 'customer'}</strong>. Tokens are stored for local testing
-        only and are <strong>never</strong> shown back from the API — only whether they are set.
+        Customer <strong>{activeCustomer?.name ?? activeCustomerId}</strong> — connections must match each vendor’s
+        identity rules (URNs, Graph IDs, X user ids). See <strong>docs/INTEGRATIONS_PLATFORMS.md</strong> in the repo
+        for requirements, official links, and JSON examples. Tokens are optional for local testing and are never
+        returned from the API.
       </p>
 
       <section className="step-card">
@@ -238,8 +373,8 @@ export default function Integrations() {
           <div>
             <h2 className="step-title">{editingId ? 'Edit connection' : 'Add connection'}</h2>
             <p className="step-desc">
-              Unique per customer: platform + external account id. Leave tokens blank to keep existing values when
-              editing.
+              Pick a platform, fill the required fields for that network only, then save. Leave tokens blank on edit to
+              keep existing secrets.
             </p>
           </div>
           {editingId && (
@@ -266,16 +401,6 @@ export default function Integrations() {
               </select>
             </label>
             <label className="field full">
-              <span>External account ID</span>
-              <input
-                className="input"
-                value={externalId}
-                onChange={(e) => setExternalId(e.target.value)}
-                placeholder="Platform-specific identifier"
-                disabled={Boolean(editingId)}
-              />
-            </label>
-            <label className="field full">
               <span>Display label</span>
               <input
                 className="input"
@@ -293,6 +418,91 @@ export default function Integrations() {
                   </option>
                 ))}
               </select>
+            </label>
+
+            {platform === 'linkedin' && (
+              <label className="field full" style={{ gridColumn: '1 / -1' }}>
+                <span>LinkedIn author URN (required)</span>
+                <input
+                  className="input"
+                  value={linkedinUrn}
+                  onChange={(e) => setLinkedinUrn(e.target.value)}
+                  placeholder="urn:li:organization:2414183 or urn:li:person:…"
+                  disabled={Boolean(editingId)}
+                />
+              </label>
+            )}
+
+            {platform === 'x' && (
+              <>
+                <label className="field full">
+                  <span>X user id (required, numeric)</span>
+                  <input
+                    className="input"
+                    value={xUserId}
+                    onChange={(e) => setXUserId(e.target.value)}
+                    placeholder="From GET /2/users/me"
+                    disabled={Boolean(editingId)}
+                  />
+                </label>
+                <label className="field full">
+                  <span>X username (optional)</span>
+                  <input
+                    className="input"
+                    value={xUsername}
+                    onChange={(e) => setXUsername(e.target.value)}
+                    placeholder="without @"
+                  />
+                </label>
+              </>
+            )}
+
+            {platform === 'instagram' && (
+              <>
+                <label className="field full">
+                  <span>Facebook Page ID (required)</span>
+                  <input
+                    className="input"
+                    value={igPageId}
+                    onChange={(e) => setIgPageId(e.target.value)}
+                    placeholder="Numeric Page id linked to the IG account"
+                    disabled={Boolean(editingId)}
+                  />
+                </label>
+                <label className="field full">
+                  <span>Instagram user id (required)</span>
+                  <input
+                    className="input"
+                    value={igUserId}
+                    onChange={(e) => setIgUserId(e.target.value)}
+                    placeholder="IG User id from instagram_business_account"
+                    disabled={Boolean(editingId)}
+                  />
+                </label>
+              </>
+            )}
+
+            {platform === 'facebook' && (
+              <label className="field full" style={{ gridColumn: '1 / -1' }}>
+                <span>Facebook Page ID (required)</span>
+                <input
+                  className="input"
+                  value={fbPageId}
+                  onChange={(e) => setFbPageId(e.target.value)}
+                  placeholder="Numeric Page id"
+                  disabled={Boolean(editingId)}
+                />
+              </label>
+            )}
+
+            <label className="field full">
+              <span>OAuth scopes granted (optional, audit)</span>
+              <input
+                className="input"
+                value={oauthScopes}
+                onChange={(e) => setOauthScopes(e.target.value)}
+                placeholder="Space-separated scopes from the token response"
+              />
             </label>
             <label className="field full">
               <span>Access token (optional, local only)</span>
@@ -324,10 +534,6 @@ export default function Integrations() {
                 value={expiresLocal}
                 onChange={(e) => setExpiresLocal(e.target.value)}
               />
-            </label>
-            <label className="field full">
-              <span>Metadata (JSON object)</span>
-              <textarea className="input code-area short" value={metadataJson} onChange={(e) => setMetadataJson(e.target.value)} rows={4} />
             </label>
           </div>
           {err && (
@@ -364,8 +570,9 @@ export default function Integrations() {
                 <tr>
                   <th>Platform</th>
                   <th>Label</th>
-                  <th>External ID</th>
+                  <th>Identity</th>
                   <th>Status</th>
+                  <th>Scopes</th>
                   <th>Tokens</th>
                   <th aria-label="Actions" />
                 </tr>
@@ -377,9 +584,16 @@ export default function Integrations() {
                       <code className="kbd">{r.platform}</code>
                     </td>
                     <td>{r.display_label ?? '—'}</td>
-                    <td className="cell-mono">{r.external_account_id}</td>
+                    <td className="cell-mono">{identitySummary(r)}</td>
                     <td>
                       <span className={`status-tag status-tag-${r.status}`}>{r.status}</span>
+                    </td>
+                    <td className="muted small" title={r.oauth_scopes_granted ?? ''}>
+                      {r.oauth_scopes_granted
+                        ? r.oauth_scopes_granted.length > 42
+                          ? `${r.oauth_scopes_granted.slice(0, 42)}…`
+                          : r.oauth_scopes_granted
+                        : '—'}
                     </td>
                     <td className="muted small">
                       {r.has_access_token ? 'access · ' : ''}
@@ -394,7 +608,7 @@ export default function Integrations() {
                         type="button"
                         className="btn danger small"
                         disabled={loading}
-                        onClick={() => void onDelete(r.id, r.display_label || r.external_account_id)}
+                        onClick={() => void onDelete(r.id, r.display_label || identitySummary(r))}
                       >
                         Remove
                       </button>
