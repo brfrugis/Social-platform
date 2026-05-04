@@ -2,6 +2,7 @@
 
 | Document | Description |
 |----------|-------------|
+| [**EXECUTIVE_OVERVIEW.md**](./EXECUTIVE_OVERVIEW.md) | **PRD em português (Brasil):** escopo, FR/NFR, API, roadmap, riscos, capacidade; **§18 diagramas Mermaid** (fluxo do app, Studio, Translate, Cognito, inquilino, publicação). |
 | [**USER_GUIDE.md**](./USER_GUIDE.md) | How to use the WebUI — same flow and labels as the app. |
 | [**INSTALLATION.md**](./INSTALLATION.md) | Every dependency, versions, verification, and Windows notes. |
 | [**ROADMAP.md**](./ROADMAP.md) | Product and platform direction: **local + cloud** tiers, EKS, auth, scale, caching, social publishing, multi-customer accounts. |

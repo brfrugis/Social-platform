@@ -8,9 +8,9 @@ import {
   type ReactNode,
 } from 'react'
 import { tenantApi } from '../lib/tenantApi'
+import { resolvePrincipalIdForApp } from '../lib/cognitoSession'
 import {
   getStoredCustomerId,
-  getStoredPrincipalId,
   setStoredCustomerId,
   setStoredPrincipalId,
 } from '../lib/workspaceStorage'
@@ -38,7 +38,7 @@ type WorkspaceCtx = {
 const Ctx = createContext<WorkspaceCtx | null>(null)
 
 export function WorkspaceProvider({ children }: { children: ReactNode }) {
-  const [principalId, setPrincipalIdState] = useState(getStoredPrincipalId)
+  const [principalId, setPrincipalIdState] = useState(() => resolvePrincipalIdForApp())
   const [activeCustomerId, setActiveCustomerIdState] = useState<string | null>(getStoredCustomerId)
   const [customers, setCustomers] = useState<CustomerRow[]>([])
   const [tenantsOk, setTenantsOk] = useState<boolean | null>(null)

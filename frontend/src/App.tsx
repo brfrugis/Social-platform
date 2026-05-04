@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Navigate, Outlet, Route, Routes, useLocation } from 'react-router-dom'
 import { api } from './lib/api'
 import NavIcon from './components/NavIcon'
 import Studio from './pages/Studio'
@@ -7,8 +8,11 @@ import Templates from './pages/Templates'
 import Workspace from './pages/Workspace'
 import Integrations from './pages/Integrations'
 import Library from './pages/Library'
+import Login from './pages/Login'
+import AuthCallback from './pages/AuthCallback'
 import { NAV, type NavId } from './navConfig'
 import { WorkspaceProvider, useWorkspace } from './context/WorkspaceContext'
+import { AuthSessionProvider, useAuthSession } from './context/AuthSessionContext'
 import { TranslationStudioBridgeProvider, useTranslationStudioBridge } from './context/TranslationStudioBridgeContext'
 import './App.css'
 
@@ -17,10 +21,30 @@ function modelFromHealth(health: string): string {
   return i === -1 ? health : health.slice(0, i).trim()
 }
 
+function RequireAuth() {
+  const { cognitoEnabled, ready, authenticated } = useAuthSession()
+  const loc = useLocation()
+  if (cognitoEnabled && !ready) {
+    return <div className="auth-loading-page">Checking sign-in…</div>
+  }
+  if (cognitoEnabled && !authenticated) {
+    return <Navigate to="/login" replace state={{ from: loc.pathname }} />
+  }
+  return <Outlet />
+}
+
 export default function App() {
   return (
     <WorkspaceProvider>
-      <AppWithTranslationBridge />
+      <AuthSessionProvider>
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route element={<RequireAuth />}>
+            <Route path="*" element={<AppWithTranslationBridge />} />
+          </Route>
+        </Routes>
+      </AuthSessionProvider>
     </WorkspaceProvider>
   )
 }
@@ -44,6 +68,7 @@ type AppShellProps = {
 
 function AppShell({ nav, setNav }: AppShellProps) {
   const { tenantsOk, activeCustomerId, customers } = useWorkspace()
+  const { cognitoEnabled, authenticated, email, signOut } = useAuthSession()
   const { hasPendingTranslation } = useTranslationStudioBridge()
   const [health, setHealth] = useState<string>('')
   const [banner, setBanner] = useState<string | null>(null)
@@ -152,6 +177,18 @@ function AppShell({ nav, setNav }: AppShellProps) {
             >
               Refresh
             </button>
+            {cognitoEnabled && authenticated && (
+              <>
+                {email && (
+                  <span className="workspace-pill" title="Signed in with Amazon Cognito">
+                    {email}
+                  </span>
+                )}
+                <button type="button" className="btn btn-ghost" onClick={signOut}>
+                  Sign out
+                </button>
+              </>
+            )}
           </div>
         </header>
 

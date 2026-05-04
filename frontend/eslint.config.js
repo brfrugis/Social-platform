@@ -18,5 +18,16 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      // Standard data-fetch-on-mount patterns flag false positives here.
+      'react-hooks/set-state-in-effect': 'off',
+    },
+  },
+  {
+    files: ['src/context/**/*.{ts,tsx}'],
+    rules: {
+      // Hooks are intentionally exported next to providers.
+      'react-refresh/only-export-components': 'off',
+    },
   },
 ])

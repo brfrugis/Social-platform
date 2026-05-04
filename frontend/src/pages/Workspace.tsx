@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { tenantApi } from '../lib/tenantApi'
+import { cognitoAuthRequired } from '../lib/cognitoConfig'
 import { useWorkspace } from '../context/WorkspaceContext'
 
 type UsageWindow = '24h' | '48h' | '7d' | '30d'
@@ -30,6 +31,8 @@ type Bootstrap = {
   customer: { id: string; name: string; slug: string | null; created_at: string }
   membership: { role: string; principal_id: string }
 }
+
+const cognitoMode = cognitoAuthRequired()
 
 export default function Workspace() {
   const {
@@ -151,10 +154,22 @@ export default function Workspace() {
         <div className="step-head">
           <span className="step-num">1</span>
           <div>
-            <h2 className="step-title">Principal (local identity)</h2>
+            <h2 className="step-title">
+              {cognitoMode ? 'Principal (Cognito)' : 'Principal (local identity)'}
+            </h2>
             <p className="step-desc">
-              Until Cognito is wired, this value is sent as <code className="kbd">X-Principal-Id</code>. Changing it
-              switches whose customers you see.
+              {cognitoMode ? (
+                <>
+                  This value is your Cognito <code className="kbd">sub</code> and is sent as{' '}
+                  <code className="kbd">X-Principal-Id</code>. It is set at sign-in; use <strong>Sign out</strong> in
+                  the header to switch users.
+                </>
+              ) : (
+                <>
+                  Until Cognito is wired, this value is sent as <code className="kbd">X-Principal-Id</code>. Changing it
+                  switches whose customers you see.
+                </>
+              )}
             </p>
           </div>
         </div>
@@ -166,6 +181,8 @@ export default function Workspace() {
             onChange={(e) => setPrincipalId(e.target.value)}
             placeholder="local-dev"
             autoComplete="off"
+            readOnly={cognitoMode}
+            aria-readonly={cognitoMode}
           />
         </label>
         <div className="row actions tight">
