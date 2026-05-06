@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { useTranslationStudioBridge } from '../context/TranslationStudioBridgeContext'
 import { useWorkspace } from '../context/WorkspaceContext'
+import { useLlmSettings } from '../context/LlmSettingsContext'
 import { api, principalHeaders } from '../lib/api'
+import { textLlmJsonFields } from '../lib/llmSettingsStorage'
 
 const SOURCE_LANGS = ['English', 'Spanish'] as const
 
@@ -14,7 +16,14 @@ function fmtCount(n: number | null | undefined): string {
 
 export default function Translate() {
   const { principalId, tenantsOk, activeCustomerId } = useWorkspace()
-  const { exportTranslationToStudio } = useTranslationStudioBridge()
+  const { prefs: llmPrefs } = useLlmSettings()
+  const {
+    exportTranslationToStudio,
+    hasPendingNewsTranslate,
+    queuedNewsTranslateText,
+    consumePendingNewsForTranslate,
+    clearPendingNewsForTranslate,
+  } = useTranslationStudioBridge()
   const [translateIn, setTranslateIn] = useState('')
   const [sourceLanguage, setSourceLanguage] = useState<string>(SOURCE_LANGS[0])
   const [translated, setTranslated] = useState('')
@@ -45,6 +54,7 @@ export default function Translate() {
           text: translateIn,
           source_language: sourceLanguage,
           temperature: 0.3,
+          ...textLlmJsonFields(llmPrefs),
           ...(tenantsOk === true && activeCustomerId ? { customer_id: activeCustomerId } : {}),
         }),
       })
@@ -57,6 +67,39 @@ export default function Translate() {
       setTranslating(false)
     }
   }
+
+  const bringFromNews = useCallback(() => {
+    if (!hasPendingNewsTranslate) {
+      setError('No news text queued. On the News tab, use Send to Translate on a stored item.')
+      return
+    }
+    const queued = queuedNewsTranslateText.trim()
+    if (!queued) {
+      setError('Nothing to import. Try sending again from News.')
+      return
+    }
+    if (translateIn.trim()) {
+      if (
+        !window.confirm(
+          `Replace the current source text (${translateIn.length} characters) with the queued news (${queued.length} characters)?`,
+        )
+      ) {
+        return
+      }
+    }
+    const applied = consumePendingNewsForTranslate()
+    if (!applied?.trim()) {
+      setError('Queued text was cleared. Try sending again from News.')
+      return
+    }
+    setTranslateIn(applied)
+    setError(null)
+  }, [
+    hasPendingNewsTranslate,
+    queuedNewsTranslateText,
+    consumePendingNewsForTranslate,
+    translateIn,
+  ])
 
   return (
     <div className="page-stack">
@@ -88,6 +131,26 @@ export default function Translate() {
               ))}
             </select>
           </label>
+          <div className="row tight" style={{ flexWrap: 'wrap', gap: '0.35rem', marginBottom: '0.35rem' }}>
+            <button
+              type="button"
+              className={`btn small ${hasPendingNewsTranslate ? 'primary' : 'secondary'}`}
+              onClick={() => bringFromNews()}
+            >
+              Bring from news
+            </button>
+            {hasPendingNewsTranslate && (
+              <button type="button" className="btn secondary small" onClick={() => clearPendingNewsForTranslate()}>
+                Discard queued news
+              </button>
+            )}
+          </div>
+          {hasPendingNewsTranslate && (
+            <p className="hint small" style={{ marginTop: 0 }}>
+              Headlines from <strong>News</strong> are queued — click <strong>Bring from news</strong> to paste into the
+              source box.
+            </p>
+          )}
           <textarea
             className="input tall"
             value={translateIn}

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslationStudioBridge } from '../context/TranslationStudioBridgeContext'
 import { useWorkspace } from '../context/WorkspaceContext'
+import { useLlmSettings } from '../context/LlmSettingsContext'
 import { api, principalHeaders } from '../lib/api'
+import { imageModelJsonField, textLlmJsonFields } from '../lib/llmSettingsStorage'
 import {
   appendStudioHistoryRun,
   clearStudioHistory,
@@ -71,7 +73,6 @@ type VariantImageState = {
   loadingPrompt: boolean
   loadingImage: boolean
   error: string | null
-  approved: boolean
   /** Tokens from last POST /api/studio/image-prompt (text model). */
   lastPromptUsage: TokenUsage | null
   lastPromptNotes: string
@@ -87,7 +88,6 @@ function emptyVariantImage(): VariantImageState {
     loadingPrompt: false,
     loadingImage: false,
     error: null,
-    approved: false,
     lastPromptUsage: null,
     lastPromptNotes: '',
     lastImageUsage: null,
@@ -98,6 +98,22 @@ function emptyVariantImage(): VariantImageState {
 function usageLine(u: TokenUsage | null): string {
   if (!u) return '—'
   return `in ${fmtCount(u.prompt_eval_count)} · out ${fmtCount(u.eval_count)}`
+}
+
+const IMAGE_STYLE_CHIPS: { label: string; suffix: string }[] = [
+  { label: 'Photorealistic', suffix: ', photorealistic, natural lighting, sharp detail' },
+  { label: 'Cartoon', suffix: ', cartoon style, bold outlines, vibrant flat colors' },
+  { label: 'Minimal vector', suffix: ', flat vector illustration, minimal, clean composition' },
+  { label: 'Cinematic', suffix: ', cinematic lighting, moody atmosphere, film still' },
+]
+
+function appendImageStyleSuffix(draft: string, suffix: string): string {
+  const core = suffix.trim().replace(/^,\s*/, '')
+  const t = draft.trim()
+  if (!t) return core
+  const probe = core.slice(0, 24).toLowerCase()
+  if (t.toLowerCase().includes(probe)) return t
+  return `${t}${suffix.startsWith(',') ? suffix : `, ${suffix}`}`
 }
 
 function VariantImagePanel({
@@ -115,7 +131,7 @@ function VariantImagePanel({
   slice: VariantImageState | undefined
   onPatch: (patch: Partial<VariantImageState>) => void
   onSuggest: () => void
-  onGenerate: (approvedPrompt: string) => void
+  onGenerate: (prompt: string) => void
 }) {
   const v = { ...emptyVariantImage(), ...slice }
   return (
@@ -125,8 +141,9 @@ function VariantImagePanel({
         <span className="muted small">Ollama model: {ollamaImageModel || '—'}</span>
       </div>
       <p className="hint small" style={{ marginTop: 0 }}>
-        Suggest an English image prompt from the caption, edit it, approve it, then generate a PNG. Publishing copies
-        the caption and downloads the image (attach it in the network composer).
+        Suggest an English image prompt from the caption, edit it freely, then generate a PNG. Use the style shortcuts to
+        nudge toward realistic, cartoon, or other looks. Publishing copies the caption and downloads the image (attach it
+        in the network composer).
       </p>
       <div className="row tight">
         <button
@@ -145,7 +162,6 @@ function VariantImagePanel({
             onPatch({
               promptDraft: '',
               imageDataUrl: null,
-              approved: false,
               error: null,
               lastPromptUsage: null,
               lastPromptNotes: '',
@@ -164,24 +180,30 @@ function VariantImagePanel({
           rows={4}
           value={v.promptDraft}
           placeholder="Click Suggest image prompt or write your own diffusion prompt in English."
-          onChange={(e) => onPatch({ promptDraft: e.target.value, approved: false })}
+          onChange={(e) => onPatch({ promptDraft: e.target.value })}
         />
       </label>
-      <label className="check-row">
-        <input
-          type="checkbox"
-          checked={v.approved}
-          onChange={(e) => onPatch({ approved: e.target.checked })}
-        />
-        <span>I approve this prompt for image generation</span>
-      </label>
+      <div className="row tight" style={{ flexWrap: 'wrap', gap: '0.35rem' }}>
+        <span className="muted small" style={{ width: '100%' }}>
+          Style shortcuts (append to prompt):
+        </span>
+        {IMAGE_STYLE_CHIPS.map((ch) => (
+          <button
+            key={ch.label}
+            type="button"
+            className="btn secondary small"
+            disabled={v.loadingImage || v.loadingPrompt}
+            onClick={() => onPatch({ promptDraft: appendImageStyleSuffix(v.promptDraft, ch.suffix) })}
+          >
+            {ch.label}
+          </button>
+        ))}
+      </div>
       <div className="row tight">
         <button
           type="button"
           className="btn primary small"
-          disabled={
-            !v.approved || !v.promptDraft.trim() || v.loadingImage || v.loadingPrompt
-          }
+          disabled={!v.promptDraft.trim() || v.loadingImage || v.loadingPrompt}
           onClick={() => onGenerate(v.promptDraft)}
         >
           {v.loadingImage ? 'Generating image…' : 'Generate image'}
@@ -206,7 +228,7 @@ function VariantImagePanel({
       )}
       {v.imageDataUrl ? (
         <figure className="variant-image-figure">
-          <img src={v.imageDataUrl} alt="Generated from approved prompt" className="variant-image-preview" />
+          <img src={v.imageDataUrl} alt="Generated image from prompt" className="variant-image-preview" />
           <figcaption className="muted small">
             <a href={v.imageDataUrl} download={`gigi-image-${formatName.replace(/\s+/g, '-')}.png`}>
               Download PNG
@@ -284,11 +306,16 @@ function PublishBar({
 
 export default function Studio() {
   const { principalId, tenantsOk, activeCustomerId, customers } = useWorkspace()
+  const { prefs: llmPrefs } = useLlmSettings()
   const {
     queuedTranslationText,
     hasPendingTranslation,
     consumePendingTranslationForBrief,
     clearPendingTranslationForStudio,
+    queuedNewsBriefText,
+    hasPendingNewsBrief,
+    consumePendingNewsForBrief,
+    clearPendingNewsForStudio,
   } = useTranslationStudioBridge()
   const activeWorkspaceName =
     tenantsOk === true && activeCustomerId
@@ -424,6 +451,37 @@ export default function Studio() {
     brief,
   ])
 
+  const bringFromNews = useCallback(() => {
+    if (!hasPendingNewsBrief) {
+      setError(
+        'No news text queued. On the News tab, use Send to Studio brief on a stored item.',
+      )
+      return
+    }
+    const queued = queuedNewsBriefText.trim()
+    if (!queued) {
+      setError('Nothing to import. Try sending again from News.')
+      return
+    }
+    if (brief.trim()) {
+      if (
+        !window.confirm(
+          `Replace the current brief (${brief.length} characters) with the queued news brief (${queued.length} characters)?`,
+        )
+      ) {
+        return
+      }
+    }
+    const applied = consumePendingNewsForBrief()
+    if (!applied?.trim()) {
+      setError('Queued text was cleared. Try sending again from News.')
+      return
+    }
+    setBrief(applied)
+    setError(null)
+    setImportNotice('Brief filled from News.')
+  }, [hasPendingNewsBrief, queuedNewsBriefText, consumePendingNewsForBrief, brief])
+
   const patchVariantImage = useCallback((index: number, patch: Partial<VariantImageState>) => {
     setVariantImages((m) => ({
       ...m,
@@ -461,6 +519,7 @@ export default function Studio() {
             tone_name: r.tone_name,
             output_language: outputLanguage,
             temperature: 0.6,
+            ...textLlmJsonFields(llmPrefs),
             ...(tenantsOk === true && activeCustomerId ? { customer_id: activeCustomerId } : {}),
           }),
         })
@@ -469,7 +528,6 @@ export default function Studio() {
         patchVariantImage(index, {
           promptDraft: res.image_prompt,
           loadingPrompt: false,
-          approved: false,
           imageDataUrl: null,
           lastPromptUsage: u,
           lastPromptNotes: res.usage_notes ?? '',
@@ -489,6 +547,7 @@ export default function Studio() {
       tenantsOk,
       activeCustomerId,
       bumpImageToolsSession,
+      llmPrefs,
     ],
   )
 
@@ -508,6 +567,7 @@ export default function Studio() {
           headers: principalHeaders(principalId),
           body: JSON.stringify({
             prompt: p,
+            ...imageModelJsonField(llmPrefs),
             ...(tenantsOk === true && activeCustomerId ? { customer_id: activeCustomerId } : {}),
           }),
         })
@@ -527,7 +587,7 @@ export default function Studio() {
         })
       }
     },
-    [patchVariantImage, principalId, tenantsOk, activeCustomerId, bumpImageToolsSession],
+    [patchVariantImage, principalId, tenantsOk, activeCustomerId, bumpImageToolsSession, llmPrefs],
   )
 
   const toggleTemplate = (id: string) => {
@@ -585,6 +645,7 @@ export default function Studio() {
           template_ids,
           output_language: outputLanguage,
           temperature,
+          ...textLlmJsonFields(llmPrefs),
           ...(tenantsOk === true && activeCustomerId ? { customer_id: activeCustomerId } : {}),
         }),
       })
@@ -758,8 +819,8 @@ export default function Studio() {
             <div>
               <h2 className="step-title">Brief and creativity</h2>
               <p className="step-desc">
-                Describe what to write, or pull in copy from <strong>Translate</strong> (pt-BR). Temperature controls
-                randomness: lower is more predictable, higher is more varied.
+                Describe what to write, or pull in copy from <strong>Translate</strong> (pt-BR) or a headline bundle from{' '}
+                <strong>News</strong>. Temperature controls randomness: lower is more predictable, higher is more varied.
               </p>
             </div>
             <div className="step-badge" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
@@ -783,12 +844,38 @@ export default function Studio() {
                   Discard queued translation
                 </button>
               )}
+              <button
+                type="button"
+                className={`btn small ${hasPendingNewsBrief ? 'primary' : 'secondary'}`}
+                onClick={() => bringFromNews()}
+                title="Paste queued news reference from the News tab into the brief"
+              >
+                Bring from news
+              </button>
+              {hasPendingNewsBrief && (
+                <button
+                  type="button"
+                  className="btn secondary small"
+                  onClick={() => {
+                    clearPendingNewsForStudio()
+                    setImportNotice(null)
+                  }}
+                >
+                  Discard queued news
+                </button>
+              )}
             </div>
           </div>
           {hasPendingTranslation && (
             <p className="hint" style={{ marginTop: 0 }}>
               A translation is <strong>queued</strong> for Studio — click <strong>Bring from translation</strong> to
               use it as the brief (output language will switch to Brazilian Portuguese).
+            </p>
+          )}
+          {hasPendingNewsBrief && (
+            <p className="hint" style={{ marginTop: 0 }}>
+              News content is <strong>queued</strong> for Studio — click <strong>Bring from news</strong> to paste it into
+              the brief.
             </p>
           )}
           <textarea

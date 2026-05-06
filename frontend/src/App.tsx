@@ -8,10 +8,13 @@ import Templates from './pages/Templates'
 import Workspace from './pages/Workspace'
 import Integrations from './pages/Integrations'
 import Library from './pages/Library'
+import News from './pages/News'
+import Settings from './pages/Settings'
 import Login from './pages/Login'
 import AuthCallback from './pages/AuthCallback'
 import { NAV, type NavId } from './navConfig'
 import { WorkspaceProvider, useWorkspace } from './context/WorkspaceContext'
+import { LlmSettingsProvider, useLlmSettings } from './context/LlmSettingsContext'
 import { AuthSessionProvider, useAuthSession } from './context/AuthSessionContext'
 import { TranslationStudioBridgeProvider, useTranslationStudioBridge } from './context/TranslationStudioBridgeContext'
 import './App.css'
@@ -36,15 +39,17 @@ function RequireAuth() {
 export default function App() {
   return (
     <WorkspaceProvider>
-      <AuthSessionProvider>
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route path="/auth/callback" element={<AuthCallback />} />
-          <Route element={<RequireAuth />}>
-            <Route path="*" element={<AppWithTranslationBridge />} />
-          </Route>
-        </Routes>
-      </AuthSessionProvider>
+      <LlmSettingsProvider>
+        <AuthSessionProvider>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
+            <Route element={<RequireAuth />}>
+              <Route path="*" element={<AppWithTranslationBridge />} />
+            </Route>
+          </Routes>
+        </AuthSessionProvider>
+      </LlmSettingsProvider>
     </WorkspaceProvider>
   )
 }
@@ -54,8 +59,11 @@ function AppWithTranslationBridge() {
   const goToStudio = useCallback(() => {
     setNav('studio')
   }, [])
+  const goToTranslate = useCallback(() => {
+    setNav('translate')
+  }, [])
   return (
-    <TranslationStudioBridgeProvider goToStudio={goToStudio}>
+    <TranslationStudioBridgeProvider goToStudio={goToStudio} goToTranslate={goToTranslate}>
       <AppShell nav={nav} setNav={setNav} />
     </TranslationStudioBridgeProvider>
   )
@@ -68,8 +76,9 @@ type AppShellProps = {
 
 function AppShell({ nav, setNav }: AppShellProps) {
   const { tenantsOk, activeCustomerId, customers } = useWorkspace()
+  const { prefs: llmPrefs } = useLlmSettings()
   const { cognitoEnabled, authenticated, email, signOut } = useAuthSession()
-  const { hasPendingTranslation } = useTranslationStudioBridge()
+  const { hasPendingTranslation, hasPendingNewsBrief, hasPendingNewsTranslate } = useTranslationStudioBridge()
   const [health, setHealth] = useState<string>('')
   const [banner, setBanner] = useState<string | null>(null)
 
@@ -84,8 +93,13 @@ function AppShell({ nav, setNav }: AppShellProps) {
         ollama_image_model?: string
       }>('/api/health')
       const img = h.ollama_image_model?.trim()
+      const uiText =
+        llmPrefs.textProvider !== 'ollama' || llmPrefs.textModel.trim()
+          ? ` · UI texto: ${llmPrefs.textProvider}${llmPrefs.textModel.trim() ? ` (${llmPrefs.textModel.trim()})` : ''}`
+          : ''
+      const uiImg = llmPrefs.imageModel.trim() ? ` · UI imagem: ${llmPrefs.imageModel.trim()}` : ''
       setHealth(
-        `${h.ollama_model} @ ${h.ollama_base_url}${img ? ` · image: ${img}` : ''}`,
+        `${h.ollama_model} @ ${h.ollama_base_url}${img ? ` · image: ${img}` : ''}${uiText}${uiImg}`,
       )
       setBanner(null)
     } catch (e) {
@@ -96,7 +110,7 @@ function AppShell({ nav, setNav }: AppShellProps) {
           : 'Cannot reach the API. Start the backend on port 8000, then refresh.',
       )
     }
-  }, [])
+  }, [llmPrefs.imageModel, llmPrefs.textModel, llmPrefs.textProvider])
 
   useEffect(() => {
     void loadHealth()
@@ -120,7 +134,11 @@ function AppShell({ nav, setNav }: AppShellProps) {
               key={item.id}
               type="button"
               className={`shell-link ${nav === item.id ? 'active' : ''} ${
-                item.id === 'studio' && hasPendingTranslation ? 'shell-link-pending' : ''
+                item.id === 'studio' && (hasPendingTranslation || hasPendingNewsBrief)
+                  ? 'shell-link-pending'
+                  : item.id === 'translate' && hasPendingNewsTranslate
+                    ? 'shell-link-pending'
+                    : ''
               }`}
               onClick={() => setNav(item.id)}
               title={item.hint}
@@ -205,6 +223,8 @@ function AppShell({ nav, setNav }: AppShellProps) {
           {nav === 'workspace' && <Workspace />}
           {nav === 'integrations' && <Integrations />}
           {nav === 'library' && <Library />}
+          {nav === 'news' && <News />}
+          {nav === 'settings' && <Settings />}
         </main>
 
         <footer className="shell-legal">

@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 from uuid import UUID
 
 from fastapi import FastAPI, HTTPException
@@ -10,7 +11,8 @@ from pydantic import BaseModel, Field
 
 import httpx
 
-from .ollama import chat_completion, generate_image_t2i
+from .llm_providers import complete_text_chat, fetch_ollama_tags
+from .ollama import generate_image_t2i
 from .presets import load_presets, save_presets
 from .prompts import (
     build_generation_messages,
@@ -22,6 +24,7 @@ from .deps import PrincipalId
 from .settings import settings
 from .services.workspace_token_usage import try_record_workspace_tokens
 from . import templates_store
+from .routers import news as news_router
 from .routers import tenants as tenants_router
 
 
@@ -34,6 +37,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="GIGI-AI API", lifespan=lifespan)
 app.include_router(tenants_router.router)
+app.include_router(news_router.router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -51,6 +55,26 @@ class HealthResponse(BaseModel):
     ollama_base_url: str
 
 
+TextProvider = Literal["ollama", "openai", "anthropic", "gemini"]
+
+
+class LlmProviderInfo(BaseModel):
+    id: str
+    label: str
+    configured: bool
+
+
+class LlmPublicSettingsResponse(BaseModel):
+    """Safe defaults + Ollama tag list for the Settings UI (no API keys exposed)."""
+
+    ollama_base_url: str
+    ollama_default_text: str
+    ollama_default_image: str
+    ollama_tags: list[str]
+    ollama_tags_error: str | None = None
+    providers: list[LlmProviderInfo]
+
+
 @app.get("/api/health", response_model=HealthResponse)
 async def health():
     return HealthResponse(
@@ -58,6 +82,25 @@ async def health():
         ollama_model=settings.ollama_model,
         ollama_image_model=settings.ollama_image_model,
         ollama_base_url=settings.ollama_base_url,
+    )
+
+
+@app.get("/api/llm/settings-public", response_model=LlmPublicSettingsResponse)
+async def llm_settings_public():
+    tags, err = await fetch_ollama_tags()
+    providers = [
+        LlmProviderInfo(id="ollama", label="Ollama (local)", configured=True),
+        LlmProviderInfo(id="openai", label="OpenAI", configured=bool(settings.openai_api_key)),
+        LlmProviderInfo(id="anthropic", label="Anthropic Claude", configured=bool(settings.anthropic_api_key)),
+        LlmProviderInfo(id="gemini", label="Google Gemini", configured=bool(settings.google_api_key)),
+    ]
+    return LlmPublicSettingsResponse(
+        ollama_base_url=settings.ollama_base_url,
+        ollama_default_text=settings.ollama_model,
+        ollama_default_image=settings.ollama_image_model,
+        ollama_tags=tags,
+        ollama_tags_error=err,
+        providers=providers,
     )
 
 
@@ -96,6 +139,15 @@ class GenerateRequest(BaseModel):
     )
     output_language: str = Field(default="English", description="Language label for generated copy")
     temperature: float = Field(default=0.7, ge=0, le=2)
+    text_provider: TextProvider = Field(
+        default="ollama",
+        description="Text backend: ollama (local), openai, anthropic, gemini (requires API keys on server).",
+    )
+    text_model: str | None = Field(
+        default=None,
+        max_length=200,
+        description="Override model id/tag for the selected text_provider (optional).",
+    )
     customer_id: UUID | None = Field(
         default=None,
         description="Optional workspace customer to attribute token totals (requires X-Principal-Id membership).",
@@ -171,7 +223,13 @@ async def generate(req: GenerateRequest, principal: PrincipalId):
             output_language=req.output_language,
             active_templates=active_templates,
         )
-        chat = await chat_completion(messages, temperature=req.temperature)
+        chat = await complete_text_chat(
+            provider=req.text_provider,
+            model=req.text_model,
+            messages=messages,
+            temperature=req.temperature,
+            num_predict=None,
+        )
         u = chat.usage
         pu, eu = u.prompt_eval_count, u.eval_count
         if pu is None or eu is None:
@@ -256,6 +314,8 @@ class TranslateRequest(BaseModel):
     text: str = Field(..., min_length=1)
     source_language: str = Field(..., description='e.g. "Spanish" or "English"')
     temperature: float = Field(default=0.3, ge=0, le=2)
+    text_provider: TextProvider = Field(default="ollama")
+    text_model: str | None = Field(default=None, max_length=200)
     customer_id: UUID | None = Field(
         default=None,
         description="Optional workspace customer to attribute token usage (requires X-Principal-Id membership).",
@@ -271,7 +331,13 @@ class TranslateResponse(BaseModel):
 @app.post("/api/translate", response_model=TranslateResponse)
 async def translate(req: TranslateRequest, principal: PrincipalId):
     messages = build_translation_messages(text=req.text, source_language=req.source_language)
-    chat = await chat_completion(messages, temperature=req.temperature, num_predict=4096)
+    chat = await complete_text_chat(
+        provider=req.text_provider,
+        model=req.text_model,
+        messages=messages,
+        temperature=req.temperature,
+        num_predict=4096,
+    )
     u = chat.usage
     incomplete = u.prompt_eval_count is None or u.eval_count is None
     resp = TranslateResponse(
@@ -299,6 +365,8 @@ class StudioImagePromptRequest(BaseModel):
     tone_name: str = Field(default="", max_length=200)
     output_language: str = Field(default="English", max_length=80)
     temperature: float = Field(default=0.6, ge=0, le=2)
+    text_provider: TextProvider = Field(default="ollama")
+    text_model: str | None = Field(default=None, max_length=200)
     customer_id: UUID | None = Field(
         default=None,
         description="Optional workspace customer to attribute token usage (requires X-Principal-Id membership).",
@@ -319,7 +387,13 @@ async def studio_image_prompt(body: StudioImagePromptRequest, principal: Princip
         tone_name=body.tone_name.strip() or "default",
         output_language=body.output_language,
     )
-    chat = await chat_completion(messages, temperature=body.temperature, num_predict=2048)
+    chat = await complete_text_chat(
+        provider=body.text_provider,
+        model=body.text_model,
+        messages=messages,
+        temperature=body.temperature,
+        num_predict=2048,
+    )
     u = chat.usage
     incomplete = u.prompt_eval_count is None or u.eval_count is None
     resp = StudioImagePromptResponse(

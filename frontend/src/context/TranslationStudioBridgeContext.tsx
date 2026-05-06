@@ -8,16 +8,23 @@ import {
 } from 'react'
 
 export type TranslationStudioBridgeCtx = {
-  /** Raw text queued for Studio (may be empty). */
   queuedTranslationText: string
-  /** Non-empty when Translate exported text for Studio (not yet consumed). */
   hasPendingTranslation: boolean
-  /** Queue Brazilian Portuguese (or any) translation text for the Studio brief. */
   exportTranslationToStudio: (text: string, options?: { navigate?: boolean }) => void
-  /** Read and clear pending text for use as the Studio brief. Returns null if empty. */
   consumePendingTranslationForBrief: () => string | null
-  /** Discard queued text without using it. */
   clearPendingTranslationForStudio: () => void
+
+  queuedNewsBriefText: string
+  hasPendingNewsBrief: boolean
+  exportNewsToStudio: (text: string, options?: { navigate?: boolean }) => void
+  consumePendingNewsForBrief: () => string | null
+  clearPendingNewsForStudio: () => void
+
+  queuedNewsTranslateText: string
+  hasPendingNewsTranslate: boolean
+  exportNewsToTranslate: (text: string, options?: { navigate?: boolean }) => void
+  consumePendingNewsForTranslate: () => string | null
+  clearPendingNewsForTranslate: () => void
 }
 
 const Ctx = createContext<TranslationStudioBridgeCtx | null>(null)
@@ -25,25 +32,27 @@ const Ctx = createContext<TranslationStudioBridgeCtx | null>(null)
 export function TranslationStudioBridgeProvider({
   children,
   goToStudio,
+  goToTranslate,
 }: {
   children: ReactNode
   goToStudio: () => void
+  goToTranslate: () => void
 }) {
-  const [pending, setPending] = useState('')
+  const [pendingTr, setPendingTr] = useState('')
+  const [pendingNewsBrief, setPendingNewsBrief] = useState('')
+  const [pendingNewsTranslate, setPendingNewsTranslate] = useState('')
 
   const exportTranslationToStudio = useCallback(
     (text: string, options?: { navigate?: boolean }) => {
-      setPending(text)
-      if (options?.navigate !== false) {
-        goToStudio()
-      }
+      setPendingTr(text)
+      if (options?.navigate !== false) goToStudio()
     },
     [goToStudio],
   )
 
   const consumePendingTranslationForBrief = useCallback((): string | null => {
     const box: { v: string | null } = { v: null }
-    setPending((cur) => {
+    setPendingTr((cur) => {
       const t = cur.trim()
       if (!t) return cur
       box.v = cur
@@ -54,22 +63,90 @@ export function TranslationStudioBridgeProvider({
   }, [])
 
   const clearPendingTranslationForStudio = useCallback(() => {
-    setPending('')
+    setPendingTr('')
+  }, [])
+
+  const exportNewsToStudio = useCallback(
+    (text: string, options?: { navigate?: boolean }) => {
+      setPendingNewsBrief(text)
+      if (options?.navigate !== false) goToStudio()
+    },
+    [goToStudio],
+  )
+
+  const consumePendingNewsForBrief = useCallback((): string | null => {
+    const box: { v: string | null } = { v: null }
+    setPendingNewsBrief((cur) => {
+      const t = cur.trim()
+      if (!t) return cur
+      box.v = cur
+      return ''
+    })
+    const out = box.v
+    return out != null && out.trim() !== '' ? out : null
+  }, [])
+
+  const clearPendingNewsForStudio = useCallback(() => {
+    setPendingNewsBrief('')
+  }, [])
+
+  const exportNewsToTranslate = useCallback(
+    (text: string, options?: { navigate?: boolean }) => {
+      setPendingNewsTranslate(text)
+      if (options?.navigate !== false) goToTranslate()
+    },
+    [goToTranslate],
+  )
+
+  const consumePendingNewsForTranslate = useCallback((): string | null => {
+    const box: { v: string | null } = { v: null }
+    setPendingNewsTranslate((cur) => {
+      const t = cur.trim()
+      if (!t) return cur
+      box.v = cur
+      return ''
+    })
+    const out = box.v
+    return out != null && out.trim() !== '' ? out : null
+  }, [])
+
+  const clearPendingNewsForTranslate = useCallback(() => {
+    setPendingNewsTranslate('')
   }, [])
 
   const value = useMemo(
     (): TranslationStudioBridgeCtx => ({
-      queuedTranslationText: pending,
-      hasPendingTranslation: pending.trim().length > 0,
+      queuedTranslationText: pendingTr,
+      hasPendingTranslation: pendingTr.trim().length > 0,
       exportTranslationToStudio,
       consumePendingTranslationForBrief,
       clearPendingTranslationForStudio,
+
+      queuedNewsBriefText: pendingNewsBrief,
+      hasPendingNewsBrief: pendingNewsBrief.trim().length > 0,
+      exportNewsToStudio,
+      consumePendingNewsForBrief,
+      clearPendingNewsForStudio,
+
+      queuedNewsTranslateText: pendingNewsTranslate,
+      hasPendingNewsTranslate: pendingNewsTranslate.trim().length > 0,
+      exportNewsToTranslate,
+      consumePendingNewsForTranslate,
+      clearPendingNewsForTranslate,
     }),
     [
-      pending,
+      pendingTr,
+      pendingNewsBrief,
+      pendingNewsTranslate,
       exportTranslationToStudio,
       consumePendingTranslationForBrief,
       clearPendingTranslationForStudio,
+      exportNewsToStudio,
+      consumePendingNewsForBrief,
+      clearPendingNewsForStudio,
+      exportNewsToTranslate,
+      consumePendingNewsForTranslate,
+      clearPendingNewsForTranslate,
     ],
   )
 

@@ -53,9 +53,11 @@ async def chat_completion(
     *,
     temperature: float = 0.7,
     num_predict: int | None = None,
+    model: str | None = None,
 ) -> ChatResult:
+    tag = (model or settings.ollama_model).strip() or settings.ollama_model
     payload: dict = {
-        "model": settings.ollama_model,
+        "model": tag,
         "messages": messages,
         "stream": False,
         "options": {"temperature": temperature},

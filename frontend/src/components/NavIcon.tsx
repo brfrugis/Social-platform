@@ -60,6 +60,24 @@ export default function NavIcon({ id }: { id: NavId }) {
           <path d="M9 8.5l5 4M11 11.5l4-4" opacity="0.55" />
         </svg>
       )
+    case 'news':
+      return (
+        <svg {...svgProps} aria-hidden>
+          <path d="M5 5.5h10v9H5z" opacity="0.35" />
+          <path d="M5 7.5h10M8 10h4M8 12.5h6" />
+          <path d="M14 4v3h3" opacity="0.65" />
+        </svg>
+      )
+    case 'settings':
+      return (
+        <svg {...svgProps} aria-hidden>
+          <circle cx="10" cy="10" r="2.25" />
+          <path
+            d="M10 3.5v1.2M10 15.3v1.2M16.2 10h-1.2M5 10H3.8M14.4 5.6l-.85.85M6.45 13.55l-.85.85M14.4 14.4l-.85-.85M6.45 6.45l-.85-.85"
+            opacity="0.85"
+          />
+        </svg>
+      )
     default:
       return null
   }

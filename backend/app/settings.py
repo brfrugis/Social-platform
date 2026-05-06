@@ -24,6 +24,21 @@ class Settings(BaseSettings):
         default=DEFAULT_DATABASE_URL,
         description="Postgres for Phase 4 tenant API. Set DATABASE_URL to empty string to disable.",
     )
+    openai_api_key: str | None = Field(default=None, description="Optional OpenAI API key for cloud text models.")
+    anthropic_api_key: str | None = Field(default=None, description="Optional Anthropic API key for Claude text models.")
+    google_api_key: str | None = Field(
+        default=None,
+        description="Optional Google AI Studio / Gemini API key (generativelanguage.googleapis.com).",
+    )
+
+    @field_validator("openai_api_key", "anthropic_api_key", "google_api_key", mode="before")
+    @classmethod
+    def strip_blank_api_keys(cls, v: object) -> object:
+        if v is None or v == "":
+            return None
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
     @field_validator("database_url", mode="before")
     @classmethod

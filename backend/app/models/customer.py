@@ -10,6 +10,7 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.customer_member import CustomerMember
+    from app.models.news_source import NewsSource
     from app.models.social_connection import SocialConnection
     from app.models.workspace_token_usage import WorkspaceTokenEvent
 
@@ -36,4 +37,7 @@ class Customer(Base):
     )
     token_events: Mapped[list["WorkspaceTokenEvent"]] = relationship(
         "WorkspaceTokenEvent", back_populates="customer", cascade="all, delete-orphan"
+    )
+    news_sources: Mapped[list["NewsSource"]] = relationship(
+        "NewsSource", back_populates="customer", cascade="all, delete-orphan"
     )
