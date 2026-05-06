@@ -14,9 +14,15 @@ def _resolve_presets_path() -> Path:
 def load_presets() -> dict:
     path = _resolve_presets_path()
     if not path.exists():
-        return {"formats": [], "tones": []}
-    with path.open(encoding="utf-8") as f:
-        return json.load(f)
+        data: dict = {}
+    else:
+        with path.open(encoding="utf-8") as f:
+            data = json.load(f)
+    data.setdefault("formats", [])
+    data.setdefault("tones", [])
+    data.setdefault("article_formats", [])
+    data.setdefault("article_tones", [])
+    return data
 
 
 def save_presets(data: dict) -> None:

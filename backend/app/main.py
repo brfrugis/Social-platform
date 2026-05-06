@@ -15,6 +15,7 @@ from .llm_providers import complete_text_chat, fetch_ollama_tags
 from .ollama import generate_image_t2i
 from .presets import load_presets, save_presets
 from .prompts import (
+    build_article_generation_messages,
     build_generation_messages,
     build_image_prompt_messages,
     build_translation_messages,
@@ -112,6 +113,8 @@ async def get_presets():
 class PresetsUpdate(BaseModel):
     formats: list | None = None
     tones: list | None = None
+    article_formats: list | None = None
+    article_tones: list | None = None
 
 
 @app.put("/api/presets")
@@ -121,8 +124,18 @@ async def put_presets(body: PresetsUpdate):
         current["formats"] = body.formats
     if body.tones is not None:
         current["tones"] = body.tones
+    if body.article_formats is not None:
+        current["article_formats"] = body.article_formats
+    if body.article_tones is not None:
+        current["article_tones"] = body.article_tones
     save_presets(current)
     return current
+
+
+StudioMode = Literal["social", "article"]
+
+# Enough completion budget for ~1,800+ word articles across providers (truncation still possible on small local models).
+ARTICLE_COMPLETION_BUDGET_TOKENS = 8192
 
 
 class GenerateItem(BaseModel):
@@ -151,6 +164,10 @@ class GenerateRequest(BaseModel):
     customer_id: UUID | None = Field(
         default=None,
         description="Optional workspace customer to attribute token totals (requires X-Principal-Id membership).",
+    )
+    studio_mode: StudioMode = Field(
+        default="social",
+        description="social = short-form presets; article = blog/long-form presets with SEO-oriented prompting.",
     )
 
 
@@ -184,8 +201,12 @@ class GenerateResponse(BaseModel):
 @app.post("/api/generate", response_model=GenerateResponse)
 async def generate(req: GenerateRequest, principal: PrincipalId):
     presets = load_presets()
-    formats = {f["id"]: f for f in presets.get("formats", [])}
-    tones = {t["id"]: t for t in presets.get("tones", [])}
+    if req.studio_mode == "article":
+        formats = {f["id"]: f for f in presets.get("article_formats", [])}
+        tones = {t["id"]: t for t in presets.get("article_tones", [])}
+    else:
+        formats = {f["id"]: f for f in presets.get("formats", [])}
+        tones = {t["id"]: t for t in presets.get("tones", [])}
 
     active_templates: list[dict] = []
     for tid in req.template_ids:
@@ -209,26 +230,44 @@ async def generate(req: GenerateRequest, principal: PrincipalId):
         if not fmt or not tone:
             raise HTTPException(
                 status_code=400,
-                detail=f"Unknown format_id={item.format_id} or tone_id={item.tone_id}",
+                detail=(
+                    f"Unknown format_id={item.format_id} or tone_id={item.tone_id} "
+                    f"for studio_mode={req.studio_mode!r}"
+                ),
             )
         tone_instructions = tone.get("instructions") or fmt.get("tone_instructions") or ""
-        messages = build_generation_messages(
-            brief=req.brief,
-            format_name=fmt.get("name", item.format_id),
-            format_description=fmt.get("description", ""),
-            format_sample=fmt.get("sample"),
-            tone_name=tone.get("name", item.tone_id),
-            tone_instructions=tone_instructions,
-            tone_sample=tone.get("sample"),
-            output_language=req.output_language,
-            active_templates=active_templates,
-        )
+        if req.studio_mode == "article":
+            messages = build_article_generation_messages(
+                brief=req.brief,
+                format_name=fmt.get("name", item.format_id),
+                format_description=fmt.get("description", ""),
+                format_sample=fmt.get("sample"),
+                tone_name=tone.get("name", item.tone_id),
+                tone_instructions=tone_instructions,
+                tone_sample=tone.get("sample"),
+                output_language=req.output_language,
+                active_templates=active_templates,
+            )
+            num_predict = ARTICLE_COMPLETION_BUDGET_TOKENS
+        else:
+            messages = build_generation_messages(
+                brief=req.brief,
+                format_name=fmt.get("name", item.format_id),
+                format_description=fmt.get("description", ""),
+                format_sample=fmt.get("sample"),
+                tone_name=tone.get("name", item.tone_id),
+                tone_instructions=tone_instructions,
+                tone_sample=tone.get("sample"),
+                output_language=req.output_language,
+                active_templates=active_templates,
+            )
+            num_predict = None
         chat = await complete_text_chat(
             provider=req.text_provider,
             model=req.text_model,
             messages=messages,
             temperature=req.temperature,
-            num_predict=None,
+            num_predict=num_predict,
         )
         u = chat.usage
         pu, eu = u.prompt_eval_count, u.eval_count

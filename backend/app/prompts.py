@@ -64,6 +64,75 @@ Produce the final piece(s) only."""
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
 
+def build_article_generation_messages(
+    *,
+    brief: str,
+    format_name: str,
+    format_description: str,
+    format_sample: str | None,
+    tone_name: str,
+    tone_instructions: str,
+    tone_sample: str | None,
+    output_language: str,
+    active_templates: list[dict] | None = None,
+) -> list[dict[str, str]]:
+    """Long-form blog content with SEO metadata, tags, and structured headings."""
+    sample_block = ""
+    if format_sample:
+        sample_block += f"\n### Reference example for this article format (match structure class and depth, do not copy verbatim):\n{format_sample.strip()}\n"
+    if tone_sample:
+        sample_block += f"\n### Reference example for this tone (voice only; adapt to the brief and format):\n{tone_sample.strip()}\n"
+
+    tmpl_block = _template_guardrail_block(active_templates or [])
+
+    system = f"""You are a senior SEO content strategist and blog editor.
+Write in {output_language} unless the brief explicitly requests another language for quotations only.
+Produce one complete blog article suitable for publishing on a company or editorial blog.
+
+Hard requirements (non-negotiable):
+- Minimum length: **at least 1,800 words** of substantive body copy (excluding the SEO metadata block). If you risk running long, prioritize depth and clarity over repetition.
+- **SEO metadata block** must appear first (see user structure), then the article body.
+- **Tags**: provide **8–15 tags** as a single comma-separated line in the metadata block. Tags must reflect concrete topics, entities, sections, and themes actually covered in the article (not generic filler).
+- Use a clear hierarchy: exactly **one H1** in the article body (markdown `#`), logical **H2** sections, and **H3** where useful. No skipped heading levels.
+- Include a compelling introduction and a conclusion with a natural call-to-action where appropriate.
+- Avoid keyword stuffing; use primary and secondary terms naturally. Prefer readable, trustworthy prose (EEAT-friendly).
+- Do not include meta-commentary about the prompt, the model, or word counts inside the article narrative.
+You must satisfy every mandatory rule in any ingested template (guardrails) section."""
+
+    user = f"""### Brief / assignment
+{brief.strip()}
+{tmpl_block}
+### Article format: {format_name}
+{format_description.strip()}
+{sample_block}
+### Tone: {tone_name}
+{tone_instructions.strip()}
+
+### Required output structure (use Markdown)
+
+1) Start with this block (fill all fields):
+
+## SEO metadata
+- **Title**: (≤70 characters recommended for SERP)
+- **Meta description**: (150–160 characters; persuasive, accurate)
+- **URL slug suggestion**: (lowercase, hyphens, no spaces)
+- **Primary topic / focus keyword phrase**: (natural language)
+- **Secondary keywords / phrases** (optional bullet list, 3–8 items)
+- **Tags**: tag-one, tag-two, tag-three, … (8–15 tags, comma-separated, specific to this piece)
+
+2) Then a horizontal rule line: ---
+
+3) Then the **article body** (minimum 1,800 words):
+- Start with `# ` followed by the article title (same as SEO Title unless the brief says otherwise).
+- Use `##` for main sections and `###` for subsections where needed.
+- Optional: short **FAQ** subsection near the end if it fits the format.
+- Optional: **Suggested internal links** as a short bullet list at the very end (topics only, not URLs), unless guardrails forbid it.
+
+Produce the full article only — no preamble."""
+
+    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
+
+
 def build_image_prompt_messages(
     *,
     social_text: str,

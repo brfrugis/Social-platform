@@ -1511,3 +1511,11 @@
 .news-item-summary {
   margin: 0.35rem 0 0.5rem;
 }
+
+.studio-mode-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+  margin-bottom: 0.65rem;
+}

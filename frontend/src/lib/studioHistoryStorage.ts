@@ -22,6 +22,8 @@ export type StudioHistoryRun = {
   brief: string
   outputLanguage: string
   temperature: number
+  /** Present on runs saved after blog-articles mode shipped; omitted on older history entries. */
+  studioMode?: 'social' | 'article'
   results: StudioHistoryGenResult[]
   usageSummary: {
     session_totals: TokenUsage

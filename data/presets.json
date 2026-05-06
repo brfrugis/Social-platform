@@ -44,5 +44,69 @@
       "instructions": "Short sentences, strong verbs, occasional contrast; still clear and credible.",
       "sample": ""
     }
+  ],
+  "article_formats": [
+    {
+      "id": "art-pillar-guide",
+      "name": "Pillar / cornerstone guide",
+      "description": "Long authoritative guide covering the topic end-to-end: problem framing, core concepts, frameworks, examples, pitfalls, and actionable takeaways. Aim for definitive coverage without fluff.",
+      "sample": ""
+    },
+    {
+      "id": "art-how-to-tutorial",
+      "name": "How-to tutorial",
+      "description": "Clear numbered or phased steps, prerequisites, tools, troubleshooting tips, and a recap checklist. Assume a motivated reader implementing along the way.",
+      "sample": ""
+    },
+    {
+      "id": "art-listicle-deep",
+      "name": "Deep listicle",
+      "description": "Numbered sections (e.g. 8–12 items). Each item: short headline, 2–4 paragraphs of substance, not one-line fluff. Connect items into a coherent narrative arc.",
+      "sample": ""
+    },
+    {
+      "id": "art-thought-leadership",
+      "name": "Thought leadership",
+      "description": "Clear thesis, evidence and examples, counterarguments addressed, implications for the reader’s industry or role. Opinionated but fair; cite concepts and data where appropriate.",
+      "sample": ""
+    },
+    {
+      "id": "art-news-analysis",
+      "name": "News & trend analysis",
+      "description": "Context on what changed, why it matters, who is affected, short timeline, and practical implications. Avoid hype; separate facts from interpretation.",
+      "sample": ""
+    }
+  ],
+  "article_tones": [
+    {
+      "id": "art-tone-editorial",
+      "name": "Editorial & polished",
+      "instructions": "Magazine-quality prose: smooth transitions, varied sentence length, precise vocabulary. Professional and timeless.",
+      "sample": ""
+    },
+    {
+      "id": "art-tone-friendly-expert",
+      "name": "Friendly expert (EEAT)",
+      "instructions": "Warm, trustworthy specialist voice: explain jargon, use analogies sparingly, sound like a practitioner who teaches.",
+      "sample": ""
+    },
+    {
+      "id": "art-tone-technical-precise",
+      "name": "Technical & precise",
+      "instructions": "Dense but readable accuracy for practitioners: define terms, prefer specificity over slogans, minimal flourish.",
+      "sample": ""
+    },
+    {
+      "id": "art-tone-story-driven",
+      "name": "Story-driven",
+      "instructions": "Open with a concrete scenario or narrative hook; weave examples through sections; land on clear lessons.",
+      "sample": ""
+    },
+    {
+      "id": "art-tone-conversational-seo",
+      "name": "Conversational SEO",
+      "instructions": "Natural question-and-answer rhythm, skimmable subheads, plain language, still substantive — optimized for readers first, search engines second.",
+      "sample": ""
+    }
   ]
 }

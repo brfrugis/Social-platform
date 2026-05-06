@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
 
-type Presets = { formats: unknown[]; tones: unknown[] }
+type Presets = {
+  formats: unknown[]
+  tones: unknown[]
+  article_formats?: unknown[]
+  article_tones?: unknown[]
+}
 
 export default function Library() {
   const [presetJson, setPresetJson] = useState('')
@@ -25,12 +30,14 @@ export default function Library() {
     setError(null)
     try {
       const parsed = JSON.parse(presetJson) as Presets
+      const body: Record<string, unknown> = {}
+      if (Array.isArray(parsed.formats)) body.formats = parsed.formats
+      if (Array.isArray(parsed.tones)) body.tones = parsed.tones
+      if (Array.isArray(parsed.article_formats)) body.article_formats = parsed.article_formats
+      if (Array.isArray(parsed.article_tones)) body.article_tones = parsed.article_tones
       await api('/api/presets', {
         method: 'PUT',
-        body: JSON.stringify({
-          formats: parsed.formats,
-          tones: parsed.tones,
-        }),
+        body: JSON.stringify(body),
       })
       setSaveMsg('Saved. Reloaded from server.')
       await load()
@@ -50,10 +57,11 @@ export default function Library() {
       <section className="step-card">
         <div className="library-toolbar">
           <div>
-            <h2 className="panel-title flush-top">Formats and tones</h2>
+            <h2 className="panel-title flush-top">Presets (social + articles)</h2>
             <p className="step-desc" style={{ margin: '0.35rem 0 0' }}>
-              Stored in <code>data/presets.json</code>. Use <code>sample</code> on each
-              format and tone for on-brand references.
+              Stored in <code>data/presets.json</code>: <code>formats</code> / <code>tones</code> for Studio social mode,
+              and <code>article_formats</code> / <code>article_tones</code> for blog articles. Use <code>sample</code>{' '}
+              on each row for on-brand references.
             </p>
           </div>
           <span className="library-meta">{lineCount} lines</span>

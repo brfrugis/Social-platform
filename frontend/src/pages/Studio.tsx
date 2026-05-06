@@ -16,7 +16,14 @@ import { tenantApi } from '../lib/tenantApi'
 
 type Format = { id: string; name: string; description: string; sample?: string }
 type Tone = { id: string; name: string; instructions: string; sample?: string }
-type Presets = { formats: Format[]; tones: Tone[] }
+type Presets = {
+  formats: Format[]
+  tones: Tone[]
+  article_formats?: Format[]
+  article_tones?: Tone[]
+}
+
+type StudioMode = 'social' | 'article'
 type GuardTemplate = {
   id: string
   name: string
@@ -120,6 +127,7 @@ function VariantImagePanel({
   formatName,
   toneName,
   ollamaImageModel,
+  contentKind,
   slice,
   onPatch,
   onSuggest,
@@ -128,22 +136,26 @@ function VariantImagePanel({
   formatName: string
   toneName: string
   ollamaImageModel: string
+  contentKind: StudioMode
   slice: VariantImageState | undefined
   onPatch: (patch: Partial<VariantImageState>) => void
   onSuggest: () => void
   onGenerate: (prompt: string) => void
 }) {
   const v = { ...emptyVariantImage(), ...slice }
+  const imageHead =
+    contentKind === 'article' ? 'Hero image for this article' : 'Image for this post'
   return (
     <div className="variant-image-panel">
       <div className="variant-image-head">
-        <span className="publish-bar-label">Image for this post</span>
+        <span className="publish-bar-label">{imageHead}</span>
         <span className="muted small">Ollama model: {ollamaImageModel || '—'}</span>
       </div>
       <p className="hint small" style={{ marginTop: 0 }}>
-        Suggest an English image prompt from the caption, edit it freely, then generate a PNG. Use the style shortcuts to
-        nudge toward realistic, cartoon, or other looks. Publishing copies the caption and downloads the image (attach it
-        in the network composer).
+        Suggest an English image prompt from the{' '}
+        {contentKind === 'article' ? 'article excerpt or key paragraph' : 'caption'}, edit it freely, then generate a PNG.
+        Use the style shortcuts to nudge toward realistic, cartoon, or other looks. Publishing copies the text and
+        downloads the image (attach it in the network composer).
       </p>
       <div className="row tight">
         <button
@@ -324,7 +336,13 @@ export default function Studio() {
 
   const [importNotice, setImportNotice] = useState<string | null>(null)
 
-  const [presets, setPresets] = useState<Presets>({ formats: [], tones: [] })
+  const [presets, setPresets] = useState<Presets>({
+    formats: [],
+    tones: [],
+    article_formats: [],
+    article_tones: [],
+  })
+  const [studioMode, setStudioMode] = useState<StudioMode>('social')
   const [templates, setTemplates] = useState<GuardTemplate[]>([])
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<Record<string, boolean>>({})
   const [brief, setBrief] = useState('')
@@ -353,6 +371,13 @@ export default function Studio() {
     () => Object.values(selectedPairs).filter(Boolean).length,
     [selectedPairs],
   )
+
+  const matrixFormats = studioMode === 'article' ? presets.article_formats ?? [] : presets.formats
+  const matrixTones = studioMode === 'article' ? presets.article_tones ?? [] : presets.tones
+
+  useEffect(() => {
+    setSelectedPairs({})
+  }, [studioMode])
 
   const load = useCallback(async () => {
     const [p, t] = await Promise.all([
@@ -601,8 +626,8 @@ export default function Studio() {
 
   const selectAllPairs = () => {
     const next: Record<string, boolean> = {}
-    for (const f of presets.formats) {
-      for (const t of presets.tones) {
+    for (const f of matrixFormats) {
+      for (const t of matrixTones) {
         next[`${f.id}::${t.id}`] = true
       }
     }
@@ -647,6 +672,7 @@ export default function Studio() {
           temperature,
           ...textLlmJsonFields(llmPrefs),
           ...(tenantsOk === true && activeCustomerId ? { customer_id: activeCustomerId } : {}),
+          studio_mode: studioMode,
         }),
       })
       setResults(res.results)
@@ -661,6 +687,7 @@ export default function Studio() {
         temperature,
         results: res.results,
         usageSummary: nextUsage,
+        studioMode,
       })
       setHistoryRuns(loadStudioHistory(activeCustomerId))
     } catch (e) {
@@ -698,6 +725,7 @@ export default function Studio() {
     setUsageSummary(run.usageSummary)
     setVariantImages({})
     setImageToolsSession({ prompt: 0, completion: 0, hasPartial: false })
+    setStudioMode(run.studioMode ?? 'social')
     setError(null)
   }, [])
 
@@ -821,6 +849,13 @@ export default function Studio() {
               <p className="step-desc">
                 Describe what to write, or pull in copy from <strong>Translate</strong> (pt-BR) or a headline bundle from{' '}
                 <strong>News</strong>. Temperature controls randomness: lower is more predictable, higher is more varied.
+                {studioMode === 'article' && (
+                  <>
+                    {' '}
+                    <strong>Blog articles</strong> aim for SEO-ready long form (metadata block, tags, structured headings,
+                    ~1,800+ words — model and hardware dependent).
+                  </>
+                )}
               </p>
             </div>
             <div className="step-badge" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.35rem' }}>
@@ -882,7 +917,11 @@ export default function Studio() {
             className="input tall"
             value={brief}
             onChange={(e) => setBrief(e.target.value)}
-            placeholder="Example: Product launch for … Audience: … Include … Avoid …"
+            placeholder={
+              studioMode === 'article'
+                ? 'Article brief: topic, audience, keyword themes, must-cover sections, CTAs, competitors to differentiate from, …'
+                : 'Example: Product launch for … Audience: … Include … Avoid …'
+            }
           />
           <div className="row">
             <label className="field">
@@ -946,8 +985,10 @@ export default function Studio() {
             </button>
           </div>
           <p className="hint">
-            Each checked format and tone pair runs one model call. Many variants can take
-            noticeable time on CPU.
+            Each checked format and tone pair runs one model call.
+            {studioMode === 'article'
+              ? ' Articles request a large completion budget — runs can take noticeably longer on CPU or smaller models.'
+              : ' Many variants can take noticeable time on CPU.'}
           </p>
         </section>
 
@@ -957,7 +998,9 @@ export default function Studio() {
             <div>
               <h2 className="step-title">Formats and tones</h2>
               <p className="step-desc">
-                Mix channels and voices. Hover a format name to see its full description.
+                {studioMode === 'social'
+                  ? 'Social presets: mix channels and voices. Hover a format name for its full description.'
+                  : 'Blog presets: article structures and long-form tones (SEO-oriented generation). Hover for details.'}
               </p>
             </div>
             <div className="row tight">
@@ -969,23 +1012,40 @@ export default function Studio() {
               </button>
             </div>
           </div>
+          <div className="studio-mode-toggle" role="group" aria-label="Studio output type">
+            <button
+              type="button"
+              className={`btn small ${studioMode === 'social' ? 'primary' : 'secondary'}`}
+              onClick={() => setStudioMode('social')}
+            >
+              Social posts
+            </button>
+            <button
+              type="button"
+              className={`btn small ${studioMode === 'article' ? 'primary' : 'secondary'}`}
+              onClick={() => setStudioMode('article')}
+            >
+              Blog articles
+            </button>
+          </div>
           <div className="matrix scroll-matrix">
-            {presets.formats.length === 0 || presets.tones.length === 0 ? (
+            {matrixFormats.length === 0 || matrixTones.length === 0 ? (
               <div className="empty-out">
                 <strong>Nothing to pick yet</strong>
                 <span className="muted">
-                  Add formats and tones under <strong>Formats and tones</strong> in the
-                  sidebar.
+                  {studioMode === 'article'
+                    ? 'Add article_formats and article_tones in Library (presets JSON), or restore defaults from the repo data/presets.json.'
+                    : 'Add formats and tones under Library (presets JSON).'}
                 </span>
               </div>
             ) : (
-              presets.formats.map((f) => (
+              matrixFormats.map((f) => (
                 <div key={f.id} className="matrix-row">
                   <div className="matrix-format" title={f.description}>
                     {f.name}
                   </div>
                   <div className="matrix-cells">
-                    {presets.tones.map((t) => {
+                    {matrixTones.map((t) => {
                       const k = `${f.id}::${t.id}`
                       const on = !!selectedPairs[k]
                       return (
@@ -1013,9 +1073,10 @@ export default function Studio() {
           <div>
             <h2 className="step-title">Output</h2>
             <p className="step-desc">
-              Review each block, add an optional image (suggested prompt → approve → generate), then publish caption
-              plus downloaded image via your linked integrations. Past runs stay in <strong>Generation history</strong>{' '}
-              below.
+              {studioMode === 'article'
+                ? 'Review each article variant (SEO metadata block plus long body). Optional hero image from a suggested prompt. Publish copies text for your CMS or composer.'
+                : 'Review each block, add an optional image (suggested prompt → generate), then publish caption plus downloaded image via your linked integrations.'}{' '}
+              Past runs stay in <strong>Generation history</strong> below.
             </p>
           </div>
         </div>
@@ -1127,6 +1188,7 @@ export default function Studio() {
                     formatName={r.format_name}
                     toneName={r.tone_name}
                     ollamaImageModel={ollamaImageModel}
+                    contentKind={studioMode}
                     slice={variantImages[i]}
                     onPatch={(patch) => patchVariantImage(i, patch)}
                     onSuggest={() => void suggestImagePrompt(i)}
@@ -1180,6 +1242,7 @@ export default function Studio() {
                         timeStyle: 'short',
                       })}
                       <span className="sep">·</span>
+                      {run.studioMode === 'article' ? 'Blog · ' : ''}
                       {run.results.length} variant{run.results.length === 1 ? '' : 's'}
                       <span className="sep">·</span>
                       <span className="history-brief-preview">{briefPreview(run.brief)}</span>
