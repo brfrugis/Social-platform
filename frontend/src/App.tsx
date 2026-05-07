@@ -17,11 +17,28 @@ import { WorkspaceProvider, useWorkspace } from './context/WorkspaceContext'
 import { LlmSettingsProvider, useLlmSettings } from './context/LlmSettingsContext'
 import { AuthSessionProvider, useAuthSession } from './context/AuthSessionContext'
 import { TranslationStudioBridgeProvider, useTranslationStudioBridge } from './context/TranslationStudioBridgeContext'
+import type { LlmUserPrefs } from './lib/llmSettingsStorage'
 import './App.css'
 
 function modelFromHealth(health: string): string {
   const i = health.indexOf(' @ ')
   return i === -1 ? health : health.slice(0, i).trim()
+}
+
+/** What the top bar shows: Settings text provider when not Ollama; else default Ollama tag from health. */
+function statusPillPrimary(health: string, prefs: LlmUserPrefs): string {
+  if (!health) return ''
+  if (prefs.textProvider !== 'ollama') {
+    const m = prefs.textModel.trim()
+    const label =
+      prefs.textProvider === 'openai'
+        ? 'OpenAI'
+        : prefs.textProvider === 'anthropic'
+          ? 'Anthropic'
+          : 'Gemini'
+    return m ? `${label} · ${m}` : `${label} (default model)`
+  }
+  return modelFromHealth(health)
 }
 
 function RequireAuth() {
@@ -154,7 +171,11 @@ function AppShell({ nav, setNav }: AppShellProps) {
           ))}
         </nav>
         <div className="shell-aside-foot">
-          <span className="aside-hint">Runs in your browser. Model stays on your machine via Ollama.</span>
+          <span className="aside-hint">
+            {llmPrefs.textProvider === 'ollama'
+              ? 'Runs in your browser. Text uses local Ollama (Settings).'
+              : 'Runs in your browser. Text uses your Settings API provider; images still use local Ollama.'}
+          </span>
         </div>
       </aside>
 
@@ -181,7 +202,7 @@ function AppShell({ nav, setNav }: AppShellProps) {
             {health ? (
               <span className="status-pill" title={health}>
                 <span className="status-dot" aria-hidden />
-                {modelFromHealth(health)}
+                {statusPillPrimary(health, llmPrefs)}
               </span>
             ) : (
               !banner && (

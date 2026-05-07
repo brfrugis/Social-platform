@@ -10,7 +10,7 @@ def _template_guardrail_block(templates: list[dict]) -> str:
         samp = (t.get("sample") or "").strip()
         chunk = [f"#### {name}"]
         if desc:
-            chunk.append(f"Purpose: {desc}")
+            chunk.append(f"Instructions (binding — follow in the final output):\n{desc}")
         if guard:
             chunk.append("Rules (mandatory):\n" + guard)
         if skel:
@@ -19,8 +19,13 @@ def _template_guardrail_block(templates: list[dict]) -> str:
             chunk.append("Reference sample (do not copy verbatim; match constraints only):\n" + samp)
         parts.append("\n".join(chunk))
     return (
-        "\n### Ingested templates (guardrails — satisfy all; if anything conflicts with format or tone, "
-        "these rules win for compliance, safety, and brand constraints)\n\n" + "\n\n".join(parts) + "\n"
+        "\n### Mandatory templates (guardrails, purpose, and output structure)\n"
+        "Satisfy **all** of the following. If anything conflicts with format or tone, **these templates win** "
+        "(compliance, safety, brand, and requested layout). "
+        "If the brief is long news copy with bullets or wire style, **do not** mirror that layout unless a template "
+        "explicitly tells you to — rewrite into the shape required here and by the format.\n\n"
+        + "\n\n".join(parts)
+        + "\n"
     )
 
 
@@ -47,19 +52,21 @@ def build_generation_messages(
     system = f"""You are a senior social media strategist and copywriter.
 Write content strictly in {output_language}.
 Follow the format constraints and the tone/voice instructions.
-You must satisfy every mandatory rule in any ingested template (guardrails) section.
+You must satisfy every mandatory template section when templates are provided (rules, purpose text, structure, samples).
+Prefer flowing paragraphs when the brief or templates imply narrative copy; do not default to bullet lists unless the format description or a template explicitly requires bullets.
 Do not include meta-commentary, preambles, or markdown fences unless the format explicitly requires markdown."""
 
     user = f"""### Brief / topic
 {brief.strip()}
-{tmpl_block}
+
 ### Format: {format_name}
 {format_description.strip()}
 {sample_block}
 ### Tone: {tone_name}
 {tone_instructions.strip()}
-
-Produce the final piece(s) only."""
+{tmpl_block}
+### Final instruction
+Produce the final piece(s) only. If templates were given above, apply them strictly to structure and voice — do not let the brief's layout (e.g. RSS bullet lists) override them."""
 
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
@@ -97,17 +104,18 @@ Hard requirements (non-negotiable):
 - Include a compelling introduction and a conclusion with a natural call-to-action where appropriate.
 - Avoid keyword stuffing; use primary and secondary terms naturally. Prefer readable, trustworthy prose (EEAT-friendly).
 - Do not include meta-commentary about the prompt, the model, or word counts inside the article narrative.
-You must satisfy every mandatory rule in any ingested template (guardrails) section."""
+You must satisfy every mandatory template section when templates are provided (rules, purpose, structure, samples).
+Prefer substantive prose in the article body; avoid bullet-only sections unless a template or the brief explicitly requires them."""
 
     user = f"""### Brief / assignment
 {brief.strip()}
-{tmpl_block}
+
 ### Article format: {format_name}
 {format_description.strip()}
 {sample_block}
 ### Tone: {tone_name}
 {tone_instructions.strip()}
-
+{tmpl_block}
 ### Required output structure (use Markdown)
 
 1) Start with this block (fill all fields):
@@ -128,7 +136,8 @@ You must satisfy every mandatory rule in any ingested template (guardrails) sect
 - Optional: short **FAQ** subsection near the end if it fits the format.
 - Optional: **Suggested internal links** as a short bullet list at the very end (topics only, not URLs), unless guardrails forbid it.
 
-Produce the full article only — no preamble."""
+### Final instruction
+Produce the full article only — no preamble. If mandatory templates appear above, honor them in the body (they may refine headings and flow) while still satisfying this Markdown shell."""
 
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 

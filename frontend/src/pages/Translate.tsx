@@ -2,8 +2,8 @@ import { useCallback, useState } from 'react'
 import { useTranslationStudioBridge } from '../context/TranslationStudioBridgeContext'
 import { useWorkspace } from '../context/WorkspaceContext'
 import { useLlmSettings } from '../context/LlmSettingsContext'
-import { api, principalHeaders } from '../lib/api'
-import { textLlmJsonFields } from '../lib/llmSettingsStorage'
+import { api } from '../lib/api'
+import { llmRequestHeaders, textLlmJsonFields } from '../lib/llmSettingsStorage'
 
 const SOURCE_LANGS = ['English', 'Spanish'] as const
 
@@ -49,7 +49,7 @@ export default function Translate() {
         usage_notes?: string
       }>('/api/translate', {
         method: 'POST',
-        headers: principalHeaders(principalId),
+        headers: llmRequestHeaders(principalId, llmPrefs),
         body: JSON.stringify({
           text: translateIn,
           source_language: sourceLanguage,

@@ -1,0 +1,26 @@
+# Copy to terraform.tfvars (do not commit secrets). Then: terraform plan && terraform apply
+
+aws_region = "us-east-1"
+
+# HTTPS certificate in the SAME region as the ALB (request in ACM, DNS-validate).
+acm_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+
+# Must be globally unique in Amazon Cognito for this region.
+cognito_hosted_ui_domain_prefix = "gigi-yourcompany-prod"
+
+cognito_callback_urls = [
+  "https://app.yourdomain.com/auth/callback",
+]
+
+cognito_logout_urls = [
+  "https://app.yourdomain.com/login",
+]
+
+# Must match the browser origin of your built SPA (same as public URL).
+cors_origins = "https://app.yourdomain.com"
+
+# Optional cost knobs
+# fargate_cpu    = 256
+# fargate_memory = 512
+# desired_count  = 1
+# db_instance_class = "db.t4g.micro"

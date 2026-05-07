@@ -168,10 +168,10 @@ export default function Templates() {
             {selectedId ? 'Edit template' : 'Create template'}
           </h2>
           <p className="step-desc">
-            <strong>Guardrails</strong> are mandatory rules for every run where this
-            template is selected. <strong>Structure</strong> is optional scaffolding
-            (headings, bullet patterns, disclosure lines). <strong>Sample</strong> is an
-            optional reference output.
+            <strong>Guardrails</strong> are mandatory rules. <strong>Description</strong> is also sent to the model as
+            binding instructions (not just a label). <strong>Structure</strong> is scaffolding (headings, paragraph flow,
+            disclosure lines). <strong>Sample</strong> is an optional reference output. In Studio you must{' '}
+            <strong>check this template</strong> in step 1 — otherwise edits here are not used.
           </p>
 
           <div className="ingest-block">

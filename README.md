@@ -282,6 +282,8 @@ Build the frontend (`npm run build` in `frontend`), then run the API: if **`fron
 
 **Before go-live:** pull the **text** model (`OLLAMA_MODEL`, e.g. `qwen2.5:14b`) and the **image** model (`OLLAMA_IMAGE_MODEL`, default **`x/z-image-turbo`**) on the host running Ollama; copy `backend/.env.example` → `backend/.env` and align those tags. See [docs/INSTALLATION.md](docs/INSTALLATION.md) and [docs/IMAGE_GENERATION.md](docs/IMAGE_GENERATION.md).
 
+For **AWS** (Cognito, RDS Postgres, Secrets Manager, low-cost ECS Fargate + ALB, optional Coralogix via OTLP), see **[deploy/aws/README.md](deploy/aws/README.md)** and the Terraform under `deploy/aws/terraform/`.
+
 ## Configuration
 
 | Variable | Default | Purpose |
@@ -292,3 +294,7 @@ Build the frontend (`npm run build` in `frontend`), then run the API: if **`fron
 | `PRESETS_PATH` | `../data/presets.json` | Path relative to `backend/` unless absolute |
 | `TEMPLATES_PATH` | `../data/templates.json` | Guardrail templates store |
 | `REQUEST_TIMEOUT_S` | `600` | Long generations on CPU |
+| `CORS_ORIGINS` | `http://localhost:5173,...` | Comma-separated browser origins (set your HTTPS app URL in production) |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | _(empty)_ | If set, enables OTLP traces (e.g. Coralogix). See `deploy/aws/README.md`. |
+| `OTEL_SERVICE_NAME` | `gigi-api` | Service name in traces |
+| `OTEL_EXPORTER_OTLP_HEADERS` | _(empty)_ | e.g. `Authorization=Bearer ...` for Coralogix |

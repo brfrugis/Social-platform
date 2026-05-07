@@ -61,7 +61,7 @@
     {
       "id": "art-listicle-deep",
       "name": "Deep listicle",
-      "description": "Numbered sections (e.g. 8–12 items). Each item: short headline, 2–4 paragraphs of substance, not one-line fluff. Connect items into a coherent narrative arc.",
+      "description": "Numbered sections (e.g. 8–12 items). Each item: short headline, 2–4 paragraphs of substance, not one-line fluff. Connect items into a coherent narrative arc, no bullet points, paragraphs with at least 6 to 8 lines, a very good volume of information",
       "sample": ""
     },
     {
@@ -93,7 +93,7 @@
     {
       "id": "art-tone-technical-precise",
       "name": "Technical & precise",
-      "instructions": "Dense but readable accuracy for practitioners: define terms, prefer specificity over slogans, minimal flourish.",
+      "instructions": "Dense but readable accuracy for practitioners: define terms, prefer specificity over slogans, minimal flourish. A mix of samples and deep explanation providing insights and option on how-to",
       "sample": ""
     },
     {

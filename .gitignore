@@ -5,3 +5,8 @@ __pycache__/
 *.pyc
 frontend/node_modules/
 frontend/dist/
+# Terraform
+deploy/aws/terraform/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log

@@ -11,6 +11,9 @@ export default defineConfig({
       '/api': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true,
+        // Default proxy timeouts are too short for Studio + cloud LLMs (many sequential variants).
+        timeout: 900_000,
+        proxyTimeout: 900_000,
       },
     },
   },

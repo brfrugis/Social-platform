@@ -6,11 +6,13 @@ import json
 import httpx
 from fastapi import HTTPException
 
+from .deps import CloudApiKeyOverrides
 from .ollama import ChatResult, OllamaUsage, chat_completion
 from .settings import settings
 
 DEFAULT_OPENAI_MODEL = "gpt-4o-mini"
-DEFAULT_ANTHROPIC_MODEL = "claude-3-5-haiku-20241022"
+# Anthropic retires dated IDs; use current Messages API model ids (see platform.claude.com docs).
+DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
 DEFAULT_GEMINI_MODEL = "gemini-1.5-flash"
 
 
@@ -39,10 +41,14 @@ async def _openai_chat(
     messages: list[dict[str, str]],
     temperature: float,
     max_tokens: int | None,
+    api_key: str | None = None,
 ) -> ChatResult:
-    key = settings.openai_api_key
-    if not key or not key.strip():
-        raise HTTPException(status_code=400, detail="OpenAI is not configured (set OPENAI_API_KEY in backend/.env).")
+    key = (api_key or "").strip() or (settings.openai_api_key or "").strip()
+    if not key:
+        raise HTTPException(
+            status_code=400,
+            detail="OpenAI is not configured (set OPENAI_API_KEY in backend/.env or X-Gigi-OpenAI-Key from Settings).",
+        )
     body: dict = {
         "model": model,
         "messages": messages,
@@ -53,7 +59,7 @@ async def _openai_chat(
     async with httpx.AsyncClient(timeout=settings.request_timeout_s) as client:
         r = await client.post(
             "https://api.openai.com/v1/chat/completions",
-            headers={"Authorization": f"Bearer {key.strip()}", "Content-Type": "application/json"},
+            headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
             json=body,
         )
         if r.status_code >= 400:
@@ -79,12 +85,13 @@ async def _anthropic_chat(
     messages: list[dict[str, str]],
     temperature: float,
     max_tokens: int | None,
+    api_key: str | None = None,
 ) -> ChatResult:
-    key = settings.anthropic_api_key
-    if not key or not key.strip():
+    key = (api_key or "").strip() or (settings.anthropic_api_key or "").strip()
+    if not key:
         raise HTTPException(
             status_code=400,
-            detail="Anthropic is not configured (set ANTHROPIC_API_KEY in backend/.env).",
+            detail="Anthropic is not configured (set ANTHROPIC_API_KEY in backend/.env or X-Gigi-Anthropic-Key from Settings).",
         )
     system, rest = _split_system(messages)
     if not rest:
@@ -102,7 +109,7 @@ async def _anthropic_chat(
         r = await client.post(
             "https://api.anthropic.com/v1/messages",
             headers={
-                "x-api-key": key.strip(),
+                "x-api-key": key,
                 "anthropic-version": "2023-06-01",
                 "content-type": "application/json",
             },
@@ -134,12 +141,13 @@ async def _gemini_chat(
     messages: list[dict[str, str]],
     temperature: float,
     max_tokens: int | None,
+    api_key: str | None = None,
 ) -> ChatResult:
-    key = settings.google_api_key
-    if not key or not key.strip():
+    key = (api_key or "").strip() or (settings.google_api_key or "").strip()
+    if not key:
         raise HTTPException(
             status_code=400,
-            detail="Gemini is not configured (set GOOGLE_API_KEY in backend/.env).",
+            detail="Gemini is not configured (set GOOGLE_API_KEY in backend/.env or X-Gigi-Google-Key from Settings).",
         )
     system, rest = _split_system(messages)
     user_parts: list[str] = []
@@ -158,7 +166,7 @@ async def _gemini_chat(
         "generationConfig": gen_cfg,
     }
     async with httpx.AsyncClient(timeout=settings.request_timeout_s) as client:
-        r = await client.post(url, params={"key": key.strip()}, json=body)
+        r = await client.post(url, params={"key": key}, json=body)
         if r.status_code >= 400:
             raise HTTPException(status_code=502, detail=_short_http_error("Gemini", r))
         data = r.json()
@@ -207,6 +215,7 @@ async def complete_text_chat(
     messages: list[dict[str, str]],
     temperature: float,
     num_predict: int | None = None,
+    key_overrides: CloudApiKeyOverrides | None = None,
 ) -> ChatResult:
     """Dispatch to the configured text provider."""
     pid = (provider or "ollama").strip().lower()
@@ -220,12 +229,14 @@ async def complete_text_chat(
             model=model,
         )
     resolved = resolve_text_model(pid, model)
+    ko = key_overrides
     if pid == "openai":
         return await _openai_chat(
             model=resolved,
             messages=messages,
             temperature=temperature,
             max_tokens=num_predict,
+            api_key=ko.openai if ko else None,
         )
     if pid == "anthropic":
         return await _anthropic_chat(
@@ -233,12 +244,14 @@ async def complete_text_chat(
             messages=messages,
             temperature=temperature,
             max_tokens=num_predict,
+            api_key=ko.anthropic if ko else None,
         )
     return await _gemini_chat(
         model=resolved,
         messages=messages,
         temperature=temperature,
         max_tokens=num_predict,
+        api_key=ko.google if ko else None,
     )
 
 

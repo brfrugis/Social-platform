@@ -14,9 +14,19 @@ type LlmPublic = {
 
 const PROVIDER_HINTS: Record<TextProviderId, string> = {
   ollama: 'Modelos listados vêm da sua instância Ollama (ollama list / /api/tags).',
-  openai: 'Ex.: gpt-4o-mini, gpt-4o. Chave: OPENAI_API_KEY no backend/.env.',
-  anthropic: 'Ex.: claude-3-5-haiku-20241022. Chave: ANTHROPIC_API_KEY no backend/.env.',
-  gemini: 'Ex.: gemini-1.5-flash. Chave: GOOGLE_API_KEY no backend/.env.',
+  openai:
+    'Ex.: gpt-4o-mini, gpt-4o. Chave no servidor (OPENAI_API_KEY) ou abaixo nesta página (teste local — enviada só no pedido HTTP).',
+  anthropic:
+    'IDs mudam na Anthropic. Ex.: claude-sonnet-4-6, claude-opus-4-6 ou claude-opus-4-7 — confira a lista oficial. Chave no .env ou abaixo.',
+  gemini: 'Ex.: gemini-1.5-flash. Chave no servidor (GOOGLE_API_KEY) ou abaixo.',
+}
+
+function cloudProviderSelectable(id: string, serverConfigured: boolean, draft: LlmUserPrefs): boolean {
+  if (id === 'ollama') return true
+  if (id === 'openai') return serverConfigured || !!draft.openaiApiKey.trim()
+  if (id === 'anthropic') return serverConfigured || !!draft.anthropicApiKey.trim()
+  if (id === 'gemini') return serverConfigured || !!draft.googleApiKey.trim()
+  return false
 }
 
 export default function Settings() {
@@ -57,8 +67,10 @@ export default function Settings() {
     <div className="page-stack">
       <p className="translate-lead">
         Escolha o <strong>modelo de texto</strong> (Ollama local ou APIs na nuvem) e o <strong>modelo de imagem</strong>{' '}
-        Ollama para o Studio. As preferências ficam em <code className="kbd">localStorage</code>; chaves de API ficam
-        apenas no servidor (<code className="kbd">backend/.env</code>).
+        Ollama para o Studio. Preferências de modelo ficam em <code className="kbd">localStorage</code>. Para OpenAI /
+        Anthropic / Gemini pode usar <code className="kbd">backend/.env</code> <strong>ou</strong> as chaves opcionais
+        abaixo (guardadas neste navegador e enviadas como cabeçalhos HTTP só nas chamadas de texto — adequado para teste
+        local; não use em máquinas partilhadas).
       </p>
 
       {loadErr && (
@@ -100,9 +112,15 @@ export default function Settings() {
               { id: 'anthropic', label: 'Anthropic Claude', configured: false },
               { id: 'gemini', label: 'Google Gemini', configured: false },
             ]).map((p) => (
-              <option key={p.id} value={p.id} disabled={p.id !== 'ollama' && !p.configured}>
+              <option
+                key={p.id}
+                value={p.id}
+                disabled={!cloudProviderSelectable(p.id, p.configured, draft)}
+              >
                 {p.label}
-                {!p.configured && p.id !== 'ollama' ? ' (configure a chave no servidor)' : ''}
+                {!cloudProviderSelectable(p.id, p.configured, draft) && p.id !== 'ollama'
+                  ? ' (defina chave no servidor ou abaixo)'
+                  : ''}
               </option>
             ))}
           </select>
@@ -146,7 +164,7 @@ export default function Settings() {
                 draft.textProvider === 'openai'
                   ? 'gpt-4o-mini'
                   : draft.textProvider === 'anthropic'
-                    ? 'claude-3-5-haiku-20241022'
+                    ? 'claude-sonnet-4-6'
                     : 'gemini-1.5-flash'
               }
               autoComplete="off"
@@ -161,12 +179,66 @@ export default function Settings() {
           </p>
         )}
 
-        {!selectedProvider?.configured && draft.textProvider !== 'ollama' && (
-          <p className="hint small" style={{ marginBottom: 0 }}>
-            Este provedor aparece desabilitado até a variável de ambiente correspondente estar definida no backend.
-            Reinicie o Uvicorn após editar <code className="kbd">.env</code>.
-          </p>
-        )}
+        {draft.textProvider !== 'ollama' &&
+          !cloudProviderSelectable(draft.textProvider, selectedProvider?.configured ?? false, draft) && (
+            <p className="hint small" style={{ marginBottom: 0 }}>
+              Defina a chave deste provedor no <code className="kbd">backend/.env</code> ou na secção abaixo, depois
+              guarde as preferências.
+            </p>
+          )}
+      </section>
+
+      <section className="step-card">
+        <div className="step-head">
+          <span className="step-num">1b</span>
+          <div>
+            <h2 className="step-title">Chaves API (opcional — teste)</h2>
+            <p className="step-desc">
+              Preencha só o que for usar. O backend prefere estes valores aos do <code className="kbd">.env</code> quando o
+              cabeçalho é enviado. Limpe e guarde para voltar a usar só o servidor.
+            </p>
+          </div>
+        </div>
+        <div className="form-grid">
+          <label className="field full">
+            <span>OpenAI API key</span>
+            <input
+              className="input"
+              type="password"
+              autoComplete="off"
+              value={draft.openaiApiKey}
+              onChange={(e) => setDraft((d) => ({ ...d, openaiApiKey: e.target.value }))}
+              placeholder="sk-… (não é guardada no servidor)"
+            />
+          </label>
+          <label className="field full">
+            <span>Anthropic API key</span>
+            <input
+              className="input"
+              type="password"
+              autoComplete="off"
+              value={draft.anthropicApiKey}
+              onChange={(e) => setDraft((d) => ({ ...d, anthropicApiKey: e.target.value }))}
+              placeholder="sk-ant-…"
+            />
+          </label>
+          <label className="field full">
+            <span>Google AI (Gemini) API key</span>
+            <input
+              className="input"
+              type="password"
+              autoComplete="off"
+              value={draft.googleApiKey}
+              onChange={(e) => setDraft((d) => ({ ...d, googleApiKey: e.target.value }))}
+              placeholder="Opcional — mesmo fluxo que GOOGLE_API_KEY"
+            />
+          </label>
+        </div>
+        <p className="hint small muted" style={{ marginBottom: 0 }}>
+          Cabeçalhos: <code className="kbd">X-Gigi-OpenAI-Key</code>, <code className="kbd">X-Gigi-Anthropic-Key</code>,{' '}
+          <code className="kbd">X-Gigi-Google-Key</code>. Risco XSS se extensões maliciosas acederem ao armazenamento do
+          browser — prefira <code className="kbd">.env</code> em produção.
+        </p>
       </section>
 
       <section className="step-card">

@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslationStudioBridge } from '../context/TranslationStudioBridgeContext'
 import { useWorkspace } from '../context/WorkspaceContext'
 import { useLlmSettings } from '../context/LlmSettingsContext'
-import { api, principalHeaders } from '../lib/api'
-import { imageModelJsonField, textLlmJsonFields } from '../lib/llmSettingsStorage'
+import { api } from '../lib/api'
+import { imageModelJsonField, llmRequestHeaders, textLlmJsonFields } from '../lib/llmSettingsStorage'
 import {
   appendStudioHistoryRun,
   clearStudioHistory,
@@ -335,6 +335,7 @@ export default function Studio() {
       : null
 
   const [importNotice, setImportNotice] = useState<string | null>(null)
+  const outputSectionRef = useRef<HTMLElement | null>(null)
 
   const [presets, setPresets] = useState<Presets>({
     formats: [],
@@ -537,7 +538,7 @@ export default function Studio() {
           usage_notes?: string
         }>('/api/studio/image-prompt', {
           method: 'POST',
-          headers: principalHeaders(principalId),
+          headers: llmRequestHeaders(principalId, llmPrefs),
           body: JSON.stringify({
             social_text: r.content,
             format_name: r.format_name,
@@ -589,7 +590,7 @@ export default function Studio() {
           usage_notes?: string
         }>('/api/studio/generate-image', {
           method: 'POST',
-          headers: principalHeaders(principalId),
+          headers: llmRequestHeaders(principalId, llmPrefs),
           body: JSON.stringify({
             prompt: p,
             ...imageModelJsonField(llmPrefs),
@@ -663,7 +664,7 @@ export default function Studio() {
         usage_notes?: string
       }>('/api/generate', {
         method: 'POST',
-        headers: principalHeaders(principalId),
+        headers: llmRequestHeaders(principalId, llmPrefs),
         body: JSON.stringify({
           brief,
           items,
@@ -681,17 +682,29 @@ export default function Studio() {
         usage_notes: res.usage_notes ?? '',
       }
       setUsageSummary(nextUsage)
-      appendStudioHistoryRun(activeCustomerId, {
-        brief,
-        outputLanguage,
-        temperature,
-        results: res.results,
-        usageSummary: nextUsage,
-        studioMode,
-      })
+      try {
+        appendStudioHistoryRun(activeCustomerId, {
+          brief,
+          outputLanguage,
+          temperature,
+          results: res.results,
+          usageSummary: nextUsage,
+          studioMode,
+        })
+      } catch {
+        /* localStorage quota / stringify — output still shown */
+      }
       setHistoryRuns(loadStudioHistory(activeCustomerId))
+      requestAnimationFrame(() => {
+        outputSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e))
+      const msg = e instanceof Error ? e.message : String(e)
+      setError(
+        msg === 'Failed to fetch' || msg.includes('NetworkError')
+          ? `${msg} — If you use OpenAI/Anthropic with several variants, the run can take many minutes. Try fewer format×tone pairs, or ensure the Vite proxy/backend timeouts are high enough.`
+          : msg,
+      )
     } finally {
       setGenerating(false)
     }
@@ -802,12 +815,24 @@ export default function Studio() {
           <div>
             <h2 className="step-title">Guardrail templates</h2>
             <p className="step-desc">
-              Choose saved rules (from Templates). They apply to every variant in this
-              batch. Skip this step if you do not need extra constraints.
+              Tick the templates to <strong>include</strong> in this run — only checked items are sent to the model
+              (Guardrails, Description, Structure, Sample from the Templates page). Editing a template does nothing until
+              you save it there and use it <strong>checked here</strong>, then click Generate again.
             </p>
           </div>
-          <span className="step-badge">{selectedTplCount} selected</span>
+          <div className="row tight">
+            <span className="step-badge">{selectedTplCount} selected</span>
+            <button type="button" className="btn secondary small" onClick={() => void load()}>
+              Refresh templates
+            </button>
+          </div>
         </div>
+        {templates.length > 0 && selectedTplCount === 0 && (
+          <div className="banner soft" role="status">
+            <strong>No template selected.</strong> Generation uses only your brief, format, and tone — not your Library
+            templates. Check one or more cards below (or skip if that is intentional).
+          </div>
+        )}
         {templates.length === 0 ? (
           <div className="empty-out">
             <strong>No templates yet</strong>
@@ -967,6 +992,9 @@ export default function Studio() {
                 step={0.05}
                 value={temperature}
                 onChange={(e) => setTemperature(Number(e.target.value))}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.preventDefault()
+                }}
               />
             </label>
           </div>
@@ -975,7 +1003,10 @@ export default function Studio() {
               type="button"
               className="btn primary"
               disabled={generating}
-              onClick={() => void runGenerate()}
+              onClick={(e) => {
+                e.preventDefault()
+                void runGenerate()
+              }}
             >
               {generating ? 'Working…' : 'Generate'}
             </button>
@@ -1067,7 +1098,7 @@ export default function Studio() {
         </section>
       </div>
 
-      <section className="step-card step-card-wide">
+      <section ref={outputSectionRef} className="step-card step-card-wide" id="studio-output">
         <div className="step-head">
           <span className="step-num">4</span>
           <div>

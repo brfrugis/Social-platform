@@ -8,6 +8,11 @@ DEFAULT_DATABASE_URL = "postgresql+asyncpg://gigi:gigi@127.0.0.1:5432/gigi"
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
+    cors_origins: str = Field(
+        default="http://localhost:5173,http://127.0.0.1:5173",
+        description="Comma-separated browser origins for CORS (set to your HTTPS app URL in production).",
+    )
+
     ollama_base_url: str = "http://127.0.0.1:11434"
     ollama_model: str = "qwen2.5:14b"
     ollama_image_model: str = Field(

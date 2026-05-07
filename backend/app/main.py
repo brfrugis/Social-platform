@@ -21,18 +21,33 @@ from .prompts import (
     build_translation_messages,
 )
 from .db.session import close_engine, init_engine
-from .deps import PrincipalId
+from .deps import CloudKeys, PrincipalId
 from .settings import settings
 from .services.workspace_token_usage import try_record_workspace_tokens
 from . import templates_store
 from .routers import news as news_router
 from .routers import tenants as tenants_router
+from .telemetry import init_opentelemetry
+
+
+def _cors_allow_origins() -> list[str]:
+    origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+    return origins if origins else ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI):
+async def lifespan(app: FastAPI):
+    init_opentelemetry(app)
     init_engine()
     yield
+    try:
+        from opentelemetry import trace
+
+        tp = trace.get_tracer_provider()
+        if tp is not None and hasattr(tp, "shutdown"):
+            tp.shutdown()  # type: ignore[union-attr]
+    except Exception:
+        pass
     await close_engine()
 
 
@@ -42,7 +57,7 @@ app.include_router(news_router.router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=_cors_allow_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -199,7 +214,7 @@ class GenerateResponse(BaseModel):
 
 
 @app.post("/api/generate", response_model=GenerateResponse)
-async def generate(req: GenerateRequest, principal: PrincipalId):
+async def generate(req: GenerateRequest, principal: PrincipalId, cloud_keys: CloudKeys):
     presets = load_presets()
     if req.studio_mode == "article":
         formats = {f["id"]: f for f in presets.get("article_formats", [])}
@@ -268,6 +283,7 @@ async def generate(req: GenerateRequest, principal: PrincipalId):
             messages=messages,
             temperature=req.temperature,
             num_predict=num_predict,
+            key_overrides=cloud_keys,
         )
         u = chat.usage
         pu, eu = u.prompt_eval_count, u.eval_count
@@ -368,7 +384,7 @@ class TranslateResponse(BaseModel):
 
 
 @app.post("/api/translate", response_model=TranslateResponse)
-async def translate(req: TranslateRequest, principal: PrincipalId):
+async def translate(req: TranslateRequest, principal: PrincipalId, cloud_keys: CloudKeys):
     messages = build_translation_messages(text=req.text, source_language=req.source_language)
     chat = await complete_text_chat(
         provider=req.text_provider,
@@ -376,6 +392,7 @@ async def translate(req: TranslateRequest, principal: PrincipalId):
         messages=messages,
         temperature=req.temperature,
         num_predict=4096,
+        key_overrides=cloud_keys,
     )
     u = chat.usage
     incomplete = u.prompt_eval_count is None or u.eval_count is None
@@ -419,7 +436,7 @@ class StudioImagePromptResponse(BaseModel):
 
 
 @app.post("/api/studio/image-prompt", response_model=StudioImagePromptResponse)
-async def studio_image_prompt(body: StudioImagePromptRequest, principal: PrincipalId):
+async def studio_image_prompt(body: StudioImagePromptRequest, principal: PrincipalId, cloud_keys: CloudKeys):
     messages = build_image_prompt_messages(
         social_text=body.social_text,
         format_name=body.format_name.strip() or "social",
@@ -432,6 +449,7 @@ async def studio_image_prompt(body: StudioImagePromptRequest, principal: Princip
         messages=messages,
         temperature=body.temperature,
         num_predict=2048,
+        key_overrides=cloud_keys,
     )
     u = chat.usage
     incomplete = u.prompt_eval_count is None or u.eval_count is None
