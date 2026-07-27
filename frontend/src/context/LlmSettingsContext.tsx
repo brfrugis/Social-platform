@@ -1,53 +1,124 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react'
-import {
-  defaultLlmPrefs,
-  loadLlmPrefs,
-  saveLlmPrefs,
-  type LlmUserPrefs,
-} from '../lib/llmSettingsStorage'
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { usePrincipal } from './PrincipalContext';
+import { useActiveCustomer } from './ActiveCustomerContext';
+import { getLlmConfig, saveLlmConfig } from '../lib/llmSettingsStorage';
+import type { LLMProvider, LLMModel } from '../lib/types';
+import type { Capability } from '../lib/types';
 
-type LlmSettingsCtx = {
-  prefs: LlmUserPrefs
-  setPrefs: (next: LlmUserPrefs) => void
-  resetPrefs: () => void
+export type LLMConfig = {
+  provider: LLMProvider | null;
+  model: LLMModel | null;
+};
+
+export type LLMConfigs = {
+  text: LLMConfig;
+  image: LLMConfig;
+  video: LLMConfig;
+};
+
+export type SetLLMConfigFunction = (
+  capability: Capability,
+  provider: LLMProvider | null,
+  model: LLMModel | null
+) => void;
+
+const initialConfigs: LLMConfigs = {
+  text: { provider: null, model: null },
+  image: { provider: null, model: null },
+  video: { provider: null, model: null },
+};
+
+interface LlmSettingsContextType {
+  configs: LLMConfigs;
+  getConfig: (capability: Capability) => LLMConfig;
+  setConfig: SetLLMConfigFunction;
 }
 
-const Ctx = createContext<LlmSettingsCtx | null>(null)
+const LlmSettingsContext = createContext<LlmSettingsContextType>({
+  configs: initialConfigs,
+  getConfig: () => ({ provider: null, model: null }),
+  setConfig: () => {},
+});
 
-export function LlmSettingsProvider({ children }: { children: ReactNode }) {
-  const [prefs, setPrefsState] = useState<LlmUserPrefs>(() => loadLlmPrefs())
+export const useLlmSettings = () => {
+  const context = useContext(LlmSettingsContext);
+  if (!context) {
+    throw new Error('useLlmSettings must be used within an LlmSettingsProvider');
+  }
+  return context;
+};
 
-  const setPrefs = useCallback((next: LlmUserPrefs) => {
-    setPrefsState(next)
-    saveLlmPrefs(next)
-  }, [])
+export const LlmSettingsProvider: React.FC<React.PropsWithChildren> = ({ children }) => {
+  const { principal } = usePrincipal();
+  const { activeCustomer } = useActiveCustomer();
+  const [configs, setConfigs] = useState<LLMConfigs>(initialConfigs);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const resetPrefs = useCallback(() => {
-    setPrefsState({ ...defaultLlmPrefs })
-    saveLlmPrefs({ ...defaultLlmPrefs })
-  }, [])
+  const loadConfigs = useCallback(async () => {
+    if (!principal?.id || !activeCustomer?.id) {
+      setConfigs(initialConfigs);
+      setIsLoading(false);
+      return;
+    }
 
-  const value = useMemo(
+    setIsLoading(true);
+    try {
+      const fetched = await getLlmConfig(principal.id, activeCustomer.id);
+      setConfigs(fetched || initialConfigs);
+    } catch (error) {
+      console.error('Error loading LLM configs:', error);
+      setConfigs(initialConfigs);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [principal?.id, activeCustomer?.id]);
+
+  useEffect(() => {
+    loadConfigs();
+  }, [loadConfigs]);
+
+  const setConfig: SetLLMConfigFunction = useCallback(
+    async (capability, provider, model) => {
+      if (!principal?.id || !activeCustomer?.id) {
+        return;
+      }
+
+      const newConfigs = {
+        ...configs,
+        [capability]: { provider, model },
+      };
+
+      setConfigs(newConfigs);
+
+      try {
+        await saveLlmConfig(principal.id, activeCustomer.id, newConfigs);
+      } catch (error) {
+        console.error('Error saving LLM config:', error);
+        setConfigs(configs);
+      }
+    },
+    [principal?.id, activeCustomer?.id, configs]
+  );
+
+  const getConfig = useCallback(
+    (capability: Capability): LLMConfig => {
+      return configs[capability];
+    },
+    [configs]
+  );
+
+  const value = React.useMemo(
     () => ({
-      prefs,
-      setPrefs,
-      resetPrefs,
+      configs,
+      getConfig,
+      setConfig,
     }),
-    [prefs, setPrefs, resetPrefs],
-  )
+    [configs, getConfig, setConfig]
+  );
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>
-}
+  if (isLoading) {
+    return null;
+  }
 
-export function useLlmSettings(): LlmSettingsCtx {
-  const v = useContext(Ctx)
-  if (!v) throw new Error('useLlmSettings must be used within LlmSettingsProvider')
-  return v
-}
+  return <LlmSettingsContext.Provider value={value}>{children}</LlmSettingsContext.Provider>;
+};
