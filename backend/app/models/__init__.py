@@ -5,3 +5,4 @@ from app.models.news_item import NewsItem  # noqa: F401
 from app.models.news_source import NewsSource  # noqa: F401
 from app.models.social_connection import SocialConnection  # noqa: F401
 from app.models.workspace_token_usage import WorkspaceTokenEvent  # noqa: F401
+from app.models.customer_setting import CustomerSetting  # noqa: F401
