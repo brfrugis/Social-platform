@@ -20,3 +20,7 @@ class ConnectionStatus(StrEnum):
     ACTIVE = "active"
     DISABLED = "disabled"
     ERROR = "error"
+
+
+class SettingKey(StrEnum):
+    DARK_MODE = "dark_mode"
