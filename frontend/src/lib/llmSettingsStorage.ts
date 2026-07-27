@@ -1,90 +1,115 @@
-const STORAGE_KEY = 'gigi_llm_prefs'
+import axios from 'axios';
+import type { LLMConfigs } from '../context/LlmSettingsContext';
 
-export type TextProviderId = 'ollama' | 'openai' | 'anthropic' | 'gemini'
+const API_BASE = '/api/tenants';
 
-export type LlmUserPrefs = {
-  textProvider: TextProviderId
-  /** Model id / Ollama tag; empty = server default for that provider */
-  textModel: string
-  /** Ollama image model tag; empty = server default */
-  imageModel: string
-  /** Optional; sent as `X-Gigi-OpenAI-Key` on text LLM requests (local testing). */
-  openaiApiKey: string
-  /** Optional; sent as `X-Gigi-Anthropic-Key`. */
-  anthropicApiKey: string
-  /** Optional; sent as `X-Gigi-Google-Key` for Gemini. */
-  googleApiKey: string
+interface BackendLLMConfig {
+  provider: string | null;
+  model: string | null;
 }
 
-export const defaultLlmPrefs: LlmUserPrefs = {
-  textProvider: 'ollama',
-  textModel: '',
-  imageModel: '',
-  openaiApiKey: '',
-  anthropicApiKey: '',
-  googleApiKey: '',
+interface BackendLLMConfigs {
+  text: BackendLLMConfig;
+  image: BackendLLMConfig;
+  video: BackendLLMConfig;
 }
 
-export function loadLlmPrefs(): LlmUserPrefs {
+const parseBackendConfigs = (backend: BackendLLMConfigs): LLMConfigs => ({
+  text: {
+    provider: backend.text.provider ?? null,
+    model: backend.text.model ?? null,
+  },
+  image: {
+    provider: backend.image.provider ?? null,
+    model: backend.image.model ?? null,
+  },
+  video: {
+    provider: backend.video.provider ?? null,
+    model: backend.video.model ?? null,
+  },
+});
+
+const encodeStorageKey = (principalId: number, customerId: number, capability: string) =>
+  `llm_${principalId}_${customerId}_${capability}`;
+
+export const loadFromLocalStorage = (principalId: number, customerId: number): LLMConfigs | null => {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return { ...defaultLlmPrefs }
-    const o = JSON.parse(raw) as Partial<LlmUserPrefs>
-    const textProvider = o.textProvider
-    if (textProvider !== 'ollama' && textProvider !== 'openai' && textProvider !== 'anthropic' && textProvider !== 'gemini') {
-      return { ...defaultLlmPrefs }
+    const text = localStorage.getItem(encodeStorageKey(principalId, customerId, 'text'));
+    const image = localStorage.getItem(encodeStorageKey(principalId, customerId, 'image'));
+    const video = localStorage.getItem(encodeStorageKey(principalId, customerId, 'video'));
+
+    if (!text || !image || !video) {
+      return null;
     }
+
     return {
-      textProvider,
-      textModel: typeof o.textModel === 'string' ? o.textModel : '',
-      imageModel: typeof o.imageModel === 'string' ? o.imageModel : '',
-      openaiApiKey: typeof o.openaiApiKey === 'string' ? o.openaiApiKey : '',
-      anthropicApiKey: typeof o.anthropicApiKey === 'string' ? o.anthropicApiKey : '',
-      googleApiKey: typeof o.googleApiKey === 'string' ? o.googleApiKey : '',
-    }
+      text: JSON.parse(text),
+      image: JSON.parse(image),
+      video: JSON.parse(video),
+    };
   } catch {
-    return { ...defaultLlmPrefs }
+    return null;
   }
-}
+};
 
-export function saveLlmPrefs(p: LlmUserPrefs): void {
+export const saveToLocalStorage = (principalId: number, customerId: number, configs: LLMConfigs) => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(p))
-  } catch {
-    /* ignore */
+    localStorage.setItem(encodeStorageKey(principalId, customerId, 'text'), JSON.stringify(configs.text));
+    localStorage.setItem(encodeStorageKey(principalId, customerId, 'image'), JSON.stringify(configs.image));
+    localStorage.setItem(encodeStorageKey(principalId, customerId, 'video'), JSON.stringify(configs.video));
+  } catch (e) {
+    console.error('Failed to save LLM configs to localStorage:', e);
   }
-}
+};
 
-/** Fields to merge into JSON bodies for text LLM routes. */
-export function textLlmJsonFields(prefs: LlmUserPrefs): { text_provider: TextProviderId; text_model?: string } {
-  const text_model = prefs.textModel.trim() || undefined
-  return {
-    text_provider: prefs.textProvider,
-    ...(text_model ? { text_model } : {}),
+export const getLlmConfig = async (principalId: number, customerId: number): Promise<LLMConfigs | null> => {
+  try {
+    const stored = loadFromLocalStorage(principalId, customerId);
+    if (stored) {
+      return stored;
+    }
+
+    const response = await axios.get<BackendLLMConfigs>(`${API_BASE}/${customerId}/llm-config`, {
+      headers: {
+        'X-Principal-Id': String(principalId),
+      },
+    });
+
+    const parsed = parseBackendConfigs(response.data);
+    saveToLocalStorage(principalId, customerId, parsed);
+    return parsed;
+  } catch (error) {
+    console.error('Error fetching LLM config from backend:', error);
+    return loadFromLocalStorage(principalId, customerId);
   }
-}
+};
 
-/** Optional Ollama image model override for POST /api/studio/generate-image */
-export function imageModelJsonField(prefs: LlmUserPrefs): { model?: string } {
-  const m = prefs.imageModel.trim()
-  return m ? { model: m } : {}
-}
+export const saveLlmConfig = async (principalId: number, customerId: number, configs: LLMConfigs) => {
+  try {
+    const backendData: BackendLLMConfigs = {
+      text: {
+        provider: configs.text.provider ?? null,
+        model: configs.text.model ?? null,
+      },
+      image: {
+        provider: configs.image.provider ?? null,
+        model: configs.image.model ?? null,
+      },
+      video: {
+        provider: configs.video.provider ?? null,
+        model: configs.video.model ?? null,
+      },
+    };
 
-/** Merge into fetch headers for routes that call cloud text APIs (override server .env when set). */
-export function cloudApiKeyHeaders(prefs: LlmUserPrefs): Record<string, string> {
-  const h: Record<string, string> = {}
-  const o = prefs.openaiApiKey?.trim()
-  if (o) h['X-Gigi-OpenAI-Key'] = o
-  const a = prefs.anthropicApiKey?.trim()
-  if (a) h['X-Gigi-Anthropic-Key'] = a
-  const g = prefs.googleApiKey?.trim()
-  if (g) h['X-Gigi-Google-Key'] = g
-  return h
-}
+    await axios.post(`${API_BASE}/${customerId}/llm-config`, backendData, {
+      headers: {
+        'X-Principal-Id': String(principalId),
+      },
+    });
 
-export function llmRequestHeaders(principalId: string, prefs: LlmUserPrefs): Record<string, string> {
-  return {
-    'X-Principal-Id': principalId.trim() || 'local-dev',
-    ...cloudApiKeyHeaders(prefs),
+    saveToLocalStorage(principalId, customerId, configs);
+  } catch (error) {
+    console.error('Error saving LLM config to backend:', error);
+    throw error;
   }
-}
+};
